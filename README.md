@@ -47,5 +47,19 @@ metadata, unique track counts by class, a five-second first-seen timeline with
 zero-count buckets, and a template-based summary. It also handles the
 `__none__` placeholder without requiring other run files.
 
+## Phase 3: Streamlit app
+
+Start the local app:
+
+```powershell
+.\venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Upload an MP4, AVI, or MOV, choose from the model's available classes, and
+select **Run**. Results are read from the saved CSV and include counts, charts,
+a first-seen timeline, a summary, the annotated video, and snapshots. Download
+the CSV or select a previous run from the results list. Corrupt video files
+show a clear error; videos over five minutes show a warning but still run.
+
 Ultralytics YOLO is licensed under AGPL-3.0. Review its terms before
 redistributing or deploying software that uses it.
