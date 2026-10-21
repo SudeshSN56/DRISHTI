@@ -68,5 +68,23 @@ Select any run with a `detections.csv`, then click **Print Brief** to create
 from the selected CSV; available snapshots are included. The PDF is created
 only when the user clicks the button.
 
+## Phase 5: automated checks and current test coverage
+
+Run the synthetic-video and UI tests:
+
+```powershell
+.\venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+The suite covers class filtering, CSV/snapshot output, H.264 video, corrupt
+uploads, zero-detection reports, editable classes, and a synthetic clip longer
+than five minutes. No real traffic, crowd, or high-altitude clips are included,
+so those accuracy and acceptance checks remain pending.
+
+An end-to-end benchmark on the RTX 4060 Laptop GPU processed a generated
+90-frame, 320x240 blank clip in 7.47 seconds (12.04 FPS), including model
+loading and H.264 output. This synthetic result is not representative of real
+drone footage.
+
 Ultralytics YOLO is licensed under AGPL-3.0. Review its terms before
 redistributing or deploying software that uses it.
