@@ -1,0 +1,287 @@
+import argparse
+import csv
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+import re
+import sys
+from typing import Callable, Sequence
+
+import cv2
+import torch
+from imageio_ffmpeg import write_frames
+from ultralytics import YOLO
+
+from core.config import (
+    CONFIDENCE_THRESHOLD,
+    DEFAULT_CLASSES,
+    IMAGE_SIZE,
+    MIN_TRACK_FRAMES,
+    MODEL_NAME,
+    OUTPUTS_DIR,
+)
+from core.video_source import VideoSource, VideoSourceError
+
+
+ProgressCallback = Callable[[int, int], None]
+
+CSV_COLUMNS = (
+    "video_name",
+    "video_duration_sec",
+    "fps",
+    "processed_at",
+    "track_id",
+    "class",
+    "first_seen_sec",
+    "last_seen_sec",
+    "avg_confidence",
+    "snapshot_path",
+)
+
+
+@dataclass
+class TrackSummary:
+    track_id: int
+    class_name: str
+    first_seen_sec: float
+    last_seen_sec: float
+    confidence_sum: float
+    frames_seen: int
+    best_confidence: float
+    snapshot_path: Path
+
+    @property
+    def avg_confidence(self) -> float:
+        return self.confidence_sum / self.frames_seen
+
+
+def _create_run_directory(output_root: Path) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    run_dir = output_root / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    (run_dir / "snapshots").mkdir()
+    return run_dir
+
+
+def _safe_class_name(name: str) -> str:
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_")
+    return safe_name or "object"
+
+
+def _write_csv(
+    csv_path: Path,
+    video_name: str,
+    duration_sec: float,
+    fps: float,
+    processed_at: str,
+    tracks: dict[int, TrackSummary],
+) -> None:
+    with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        kept_tracks = [
+            track for track in tracks.values()
+            if track.frames_seen >= MIN_TRACK_FRAMES
+        ]
+        if not kept_tracks:
+            writer.writerow(
+                {
+                    "video_name": video_name,
+                    "video_duration_sec": duration_sec,
+                    "fps": fps,
+                    "processed_at": processed_at,
+                    "track_id": "",
+                    "class": "__none__",
+                    "first_seen_sec": "",
+                    "last_seen_sec": "",
+                    "avg_confidence": "",
+                    "snapshot_path": "",
+                }
+            )
+            return
+
+        for track in sorted(kept_tracks, key=lambda item: (item.class_name, item.track_id)):
+            writer.writerow(
+                {
+                    "video_name": video_name,
+                    "video_duration_sec": duration_sec,
+                    "fps": fps,
+                    "processed_at": processed_at,
+                    "track_id": track.track_id,
+                    "class": track.class_name,
+                    "first_seen_sec": round(track.first_seen_sec, 3),
+                    "last_seen_sec": round(track.last_seen_sec, 3),
+                    "avg_confidence": round(track.avg_confidence, 5),
+                    "snapshot_path": track.snapshot_path.relative_to(csv_path.parent).as_posix(),
+                }
+            )
+
+
+def run_detection(
+    video_path: str | Path,
+    selected_classes: Sequence[str] | None = None,
+    progress_callback: ProgressCallback | None = None,
+    output_root: str | Path = OUTPUTS_DIR,
+    model_name: str = MODEL_NAME,
+) -> Path:
+    """Track selected COCO classes in a video and return its output run directory."""
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is unavailable. Install a CUDA-enabled PyTorch build to run detection.")
+
+    classes = tuple(selected_classes if selected_classes is not None else DEFAULT_CLASSES)
+    if not classes:
+        raise ValueError("Select at least one object class before running detection.")
+    if len(set(classes)) != len(classes):
+        raise ValueError("Selected object classes must not contain duplicates.")
+
+    with VideoSource(video_path) as source:
+        metadata = source.metadata
+        model = YOLO(model_name)
+        names = model.names
+        names_by_id = {int(class_id): name for class_id, name in names.items()}
+        class_ids_by_name = {name: class_id for class_id, name in names_by_id.items()}
+        unknown_classes = sorted(set(classes) - class_ids_by_name.keys())
+        if unknown_classes:
+            raise ValueError(f"Selected classes are not in the model: {', '.join(unknown_classes)}")
+        selected_class_ids = [class_ids_by_name[name] for name in classes]
+
+        run_dir = _create_run_directory(Path(output_root))
+        snapshots_dir = run_dir / "snapshots"
+        annotated_path = run_dir / "annotated.mp4"
+        timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+        tracks: dict[int, TrackSummary] = {}
+        frame_index = 0
+        writer = write_frames(
+            annotated_path,
+            (metadata.width + metadata.width % 2, metadata.height + metadata.height % 2),
+            fps=metadata.fps,
+            codec="libx264",
+            macro_block_size=1,
+            output_params=["-movflags", "+faststart"],
+        )
+        writer.send(None)
+
+        try:
+            while True:
+                readable, frame = source.read()
+                if not readable:
+                    break
+
+                result = model.track(
+                    frame,
+                    persist=True,
+                    tracker="bytetrack.yaml",
+                    classes=selected_class_ids,
+                    conf=CONFIDENCE_THRESHOLD,
+                    imgsz=IMAGE_SIZE,
+                    device=0,
+                    verbose=False,
+                )[0]
+
+                if result.boxes is not None and result.boxes.id is not None:
+                    boxes = result.boxes.xyxy.cpu().tolist()
+                    class_ids = result.boxes.cls.cpu().tolist()
+                    confidences = result.boxes.conf.cpu().tolist()
+                    track_ids = result.boxes.id.int().cpu().tolist()
+                    time_sec = frame_index / metadata.fps
+                    for box, class_id, confidence, track_id in zip(
+                        boxes, class_ids, confidences, track_ids
+                    ):
+                        class_name = names_by_id[int(class_id)]
+                        track = tracks.get(track_id)
+                        x1, y1, x2, y2 = (
+                            max(0, int(box[0])),
+                            max(0, int(box[1])),
+                            min(metadata.width, int(box[2])),
+                            min(metadata.height, int(box[3])),
+                        )
+                        if track is None:
+                            snapshot_path = snapshots_dir / (
+                                f"{_safe_class_name(class_name)}_{track_id}.jpg"
+                            )
+                            track = TrackSummary(
+                                track_id=track_id,
+                                class_name=class_name,
+                                first_seen_sec=time_sec,
+                                last_seen_sec=time_sec,
+                                confidence_sum=0.0,
+                                frames_seen=0,
+                                best_confidence=-1.0,
+                                snapshot_path=snapshot_path,
+                            )
+                            tracks[track_id] = track
+
+                        track.last_seen_sec = time_sec
+                        track.confidence_sum += float(confidence)
+                        track.frames_seen += 1
+                        if confidence > track.best_confidence and x2 > x1 and y2 > y1:
+                            if not cv2.imwrite(
+                                str(track.snapshot_path),
+                                frame[y1:y2, x1:x2],
+                            ):
+                                raise OSError(f"Could not write snapshot: {track.snapshot_path}")
+                            track.best_confidence = float(confidence)
+
+                annotated_frame = result.plot()
+                if metadata.width % 2 or metadata.height % 2:
+                    annotated_frame = cv2.copyMakeBorder(
+                        annotated_frame,
+                        0,
+                        metadata.height % 2,
+                        0,
+                        metadata.width % 2,
+                        cv2.BORDER_CONSTANT,
+                        value=(0, 0, 0),
+                    )
+                writer.send(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB))
+                frame_index += 1
+                if progress_callback is not None:
+                    progress_callback(frame_index, metadata.frame_count)
+        finally:
+            writer.close()
+
+        kept_track_ids = {
+            track_id for track_id, track in tracks.items()
+            if track.frames_seen >= MIN_TRACK_FRAMES
+        }
+        for track_id, track in tracks.items():
+            if track_id not in kept_track_ids and track.snapshot_path.exists():
+                track.snapshot_path.unlink()
+
+        _write_csv(
+            run_dir / "detections.csv",
+            metadata.path.name,
+            metadata.duration_sec,
+            metadata.fps,
+            timestamp,
+            tracks,
+        )
+        return run_dir
+
+
+def _main() -> int:
+    parser = argparse.ArgumentParser(description="Track selected objects in a video.")
+    parser.add_argument("video", type=Path, help="Path to an MP4, AVI, or MOV video.")
+    parser.add_argument(
+        "--classes",
+        nargs="+",
+        default=list(DEFAULT_CLASSES),
+        help="COCO class names to detect (default: curated drone-surveillance list).",
+    )
+    args = parser.parse_args()
+
+    def show_progress(processed: int, total: int) -> None:
+        percent = processed * 100 // total
+        print(f"\rProcessing: {processed}/{total} frames ({percent}%)", end="", flush=True)
+
+    try:
+        run_dir = run_detection(args.video, args.classes, show_progress)
+    except (VideoSourceError, ValueError, RuntimeError, OSError) as error:
+        print(f"\nError: {error}", file=sys.stderr)
+        return 1
+    print(f"\nRun complete: {run_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

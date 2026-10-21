@@ -1,5 +1,6 @@
 # Install the CUDA-enabled PyTorch build separately; see README.md.
 ultralytics
+lap>=0.5.12
 opencv-python
 pandas
 matplotlib
