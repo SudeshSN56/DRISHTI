@@ -86,5 +86,21 @@ An end-to-end benchmark on the RTX 4060 Laptop GPU processed a generated
 loading and H.264 output. This synthetic result is not representative of real
 drone footage.
 
+## Phase 6: clean-start demo checklist
+
+From a fresh PowerShell window in the project directory:
+
+1. Confirm CUDA and the RTX 4060 with
+   `.\venv\Scripts\python.exe -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"`.
+2. Start the app with `.\venv\Scripts\python.exe -m streamlit run app.py`.
+3. Upload a recorded clip, choose classes, and click **Run**.
+4. Review the CSV-derived results and annotated video, then download the CSV.
+5. Click **Print Brief**, download the PDF, and compare its counts to the CSV.
+6. Repeat with a second clip and test a corrupt/non-video upload.
+
+Small objects at altitude may be missed; tracking can split or merge IDs, so
+counts are approximate. Live streams, GPS, thermal/night footage, model
+training, and cloud processing are outside this version's scope.
+
 Ultralytics YOLO is licensed under AGPL-3.0. Review its terms before
 redistributing or deploying software that uses it.
