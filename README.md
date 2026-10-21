@@ -61,5 +61,12 @@ a first-seen timeline, a summary, the annotated video, and snapshots. Download
 the CSV or select a previous run from the results list. Corrupt video files
 show a clear error; videos over five minutes show a warning but still run.
 
+## Phase 4: Print Brief
+
+Select any run with a `detections.csv`, then click **Print Brief** to create
+`brief.pdf` in that run folder. Metadata, counts, charts, and summary are built
+from the selected CSV; available snapshots are included. The PDF is created
+only when the user clicks the button.
+
 Ultralytics YOLO is licensed under AGPL-3.0. Review its terms before
 redistributing or deploying software that uses it.

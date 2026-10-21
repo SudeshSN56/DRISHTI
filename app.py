@@ -8,6 +8,7 @@ from ultralytics import YOLO
 from core.analysis import AnalysisResult, analyze_csv
 from core.config import DEFAULT_CLASSES, MODEL_NAME, OUTPUTS_DIR
 from core.detector import run_detection
+from core.report import build_brief
 from core.video_source import VideoSource, VideoSourceError
 
 
@@ -72,6 +73,26 @@ def _render_results(run_dir: Path) -> None:
         mime="text/csv",
         key=f"download_csv_{run_dir.name}",
     )
+    if st.button("Print Brief", key=f"print_brief_{run_dir.name}"):
+        try:
+            brief_path = build_brief(csv_path)
+            st.session_state["brief_for_run"] = str(brief_path)
+            st.success("PDF brief created from this run's CSV.")
+        except (OSError, ValueError, pd.errors.ParserError) as error:
+            st.error(f"Could not create the PDF brief: {error}")
+
+    brief_path = run_dir / "brief.pdf"
+    if (
+        st.session_state.get("brief_for_run") == str(brief_path)
+        and brief_path.is_file()
+    ):
+        st.download_button(
+            "Download Brief PDF",
+            data=brief_path.read_bytes(),
+            file_name=brief_path.name,
+            mime="application/pdf",
+            key=f"download_brief_{run_dir.name}",
+        )
 
     annotated_video = run_dir / "annotated.mp4"
     if annotated_video.is_file():
