@@ -1,0 +1,8 @@
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+outputs/run_*/
+test_videos/*
+!test_videos/.gitkeep
+yolo11s.pt
