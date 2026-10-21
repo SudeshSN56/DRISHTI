@@ -40,5 +40,12 @@ highest-confidence object crops under a timestamped folder in `outputs`.
 Detection requires CUDA; the current confidence threshold, image size, model,
 and minimum track length are in `core/config.py`.
 
+## Phase 2: CSV analysis
+
+`core.analysis.analyze_csv(path)` reads only `detections.csv` and returns run
+metadata, unique track counts by class, a five-second first-seen timeline with
+zero-count buckets, and a template-based summary. It also handles the
+`__none__` placeholder without requiring other run files.
+
 Ultralytics YOLO is licensed under AGPL-3.0. Review its terms before
 redistributing or deploying software that uses it.

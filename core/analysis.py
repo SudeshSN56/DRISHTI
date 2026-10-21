@@ -1,0 +1,189 @@
+from dataclasses import dataclass
+from math import ceil
+from pathlib import Path
+
+import pandas as pd
+
+from core.config import TIMELINE_BUCKET_SECONDS
+
+
+REQUIRED_COLUMNS = {
+    "video_name",
+    "video_duration_sec",
+    "processed_at",
+    "track_id",
+    "class",
+    "first_seen_sec",
+}
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    video_name: str
+    video_duration_sec: float
+    processed_at: str
+    counts: pd.DataFrame
+    timeline: pd.DataFrame
+    summary: str
+
+
+def _format_time(seconds: float) -> str:
+    minutes = int(seconds) // 60
+    remaining_seconds = seconds - minutes * 60
+    if remaining_seconds.is_integer():
+        return f"{minutes}:{int(remaining_seconds):02d}"
+    return f"{minutes}:{remaining_seconds:05.2f}"
+
+
+def _load_csv(csv_path: str | Path) -> tuple[pd.DataFrame, str, float, str]:
+    path = Path(csv_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Detection CSV does not exist: {path}")
+
+    detections = pd.read_csv(path, dtype={"track_id": "string", "class": "string"})
+    missing_columns = REQUIRED_COLUMNS - set(detections.columns)
+    if missing_columns:
+        raise ValueError(f"Detection CSV is missing columns: {', '.join(sorted(missing_columns))}")
+    if detections.empty:
+        raise ValueError("Detection CSV contains no run details.")
+
+    video_names = detections["video_name"].dropna().astype(str).unique()
+    durations = pd.to_numeric(detections["video_duration_sec"], errors="raise").dropna().unique()
+    processed_at_values = detections["processed_at"].dropna().astype(str).unique()
+    if len(video_names) != 1 or len(durations) != 1 or len(processed_at_values) != 1:
+        raise ValueError("Detection CSV must contain consistent video and run metadata.")
+
+    duration = float(durations[0])
+    if not pd.notna(duration) or duration <= 0:
+        raise ValueError("Detection CSV contains an invalid video duration.")
+    return detections, video_names[0], duration, processed_at_values[0]
+
+
+def _build_timeline(
+    detections: pd.DataFrame,
+    duration_sec: float,
+    bucket_seconds: int,
+    classes: list[str],
+) -> pd.DataFrame:
+    columns = ("bucket_start_sec", "bucket_end_sec", "class", "count")
+    if not classes:
+        return pd.DataFrame(columns=columns)
+
+    bucket_count = ceil(duration_sec / bucket_seconds)
+    bucket_starts = [index * bucket_seconds for index in range(bucket_count)]
+    timeline = pd.MultiIndex.from_product(
+        (bucket_starts, classes),
+        names=("bucket_start_sec", "class"),
+    ).to_frame(index=False)
+    timeline["count"] = 0
+
+    if not detections.empty:
+        first_seen = pd.to_numeric(detections["first_seen_sec"], errors="raise")
+        if first_seen.isna().any() or (first_seen < 0).any() or (first_seen > duration_sec).any():
+            raise ValueError("Detection CSV contains an invalid first-seen timestamp.")
+        events = detections[["class", "track_id"]].copy()
+        events["first_seen_sec"] = first_seen
+        events = events.groupby(["class", "track_id"], as_index=False)["first_seen_sec"].min()
+        events["bucket_start_sec"] = (
+            (events["first_seen_sec"] // bucket_seconds).astype(int) * bucket_seconds
+        ).clip(upper=(bucket_count - 1) * bucket_seconds)
+        counts_by_bucket = (
+            events.groupby(["bucket_start_sec", "class"])["track_id"]
+            .nunique()
+            .rename("count")
+            .reset_index()
+        )
+        timeline = timeline.drop(columns="count").merge(
+            counts_by_bucket,
+            on=["bucket_start_sec", "class"],
+            how="left",
+        )
+        timeline["count"] = timeline["count"].fillna(0).astype(int)
+
+    timeline["bucket_end_sec"] = (
+        timeline["bucket_start_sec"] + bucket_seconds
+    ).clip(upper=duration_sec)
+    return timeline.loc[:, columns].sort_values(
+        ["bucket_start_sec", "class"],
+        ignore_index=True,
+    )
+
+
+def _build_summary(
+    video_name: str,
+    duration_sec: float,
+    counts: pd.DataFrame,
+    timeline: pd.DataFrame,
+) -> str:
+    duration = _format_time(duration_sec)
+    if counts.empty:
+        return (
+            f"No objects were detected in {video_name} ({duration}). "
+            "Counts are approximate because tracking can split or merge object IDs."
+        )
+
+    total = int(counts["count"].sum())
+    highest_count = int(counts["count"].max())
+    common_classes = counts.loc[counts["count"] == highest_count, "class"].tolist()
+    if len(common_classes) == 1:
+        most_common = f"Most common class: {common_classes[0]} ({highest_count})."
+    else:
+        most_common = f"Most common classes: {', '.join(common_classes)} ({highest_count} each)."
+
+    bucket_totals = timeline.groupby(
+        ["bucket_start_sec", "bucket_end_sec"],
+        as_index=False,
+    )["count"].sum()
+    busiest = bucket_totals.loc[bucket_totals["count"].idxmax()]
+    busiest_window = (
+        f"Busiest time window: {_format_time(float(busiest['bucket_start_sec']))}"
+        f"-{_format_time(float(busiest['bucket_end_sec']))} "
+        f"({int(busiest['count'])} first-seen objects)."
+    )
+    return (
+        f"{total} unique tracked object(s) were detected in {video_name} "
+        f"({duration}). {most_common} {busiest_window} "
+        "Counts are approximate because tracking can split or merge object IDs."
+    )
+
+
+def analyze_csv(
+    csv_path: str | Path,
+    bucket_seconds: int = TIMELINE_BUCKET_SECONDS,
+) -> AnalysisResult:
+    """Build all analysis and chart data from a run's detections CSV."""
+    if bucket_seconds <= 0:
+        raise ValueError("Timeline bucket size must be a positive number of seconds.")
+
+    detections, video_name, duration_sec, processed_at = _load_csv(csv_path)
+    is_placeholder = detections["class"].eq("__none__")
+    valid = detections.loc[~is_placeholder].copy()
+    if (
+        valid["class"].isna().any()
+        or valid["track_id"].isna().any()
+        or valid["track_id"].str.strip().eq("").any()
+    ):
+        raise ValueError("Detection CSV contains a tracked object with a missing class or track ID.")
+    valid["class"] = valid["class"].astype(str)
+    if valid["class"].str.strip().eq("").any():
+        raise ValueError("Detection CSV contains an empty class for a tracked object.")
+
+    distinct_tracks = valid.drop_duplicates(["class", "track_id"])
+    counts = (
+        distinct_tracks.groupby("class")["track_id"]
+        .nunique()
+        .rename("count")
+        .reset_index()
+        .sort_values(["count", "class"], ascending=[False, True], ignore_index=True)
+    )
+    classes = sorted(counts["class"].tolist())
+    timeline = _build_timeline(valid, duration_sec, bucket_seconds, classes)
+    summary = _build_summary(video_name, duration_sec, counts, timeline)
+    return AnalysisResult(
+        video_name=video_name,
+        video_duration_sec=duration_sec,
+        processed_at=processed_at,
+        counts=counts,
+        timeline=timeline,
+        summary=summary,
+    )
