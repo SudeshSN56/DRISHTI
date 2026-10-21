@@ -148,6 +148,13 @@ baseline and must not be presented as measured real-footage performance.
   account. The private remote repository has not yet been created and no
   commits have been uploaded. Before publishing, authenticate with
   `gh auth login`, then create a private repository and push `main`.
+- Device-code login is currently waiting at `https://github.com/login/device`.
+  A fresh one-time code was issued in the terminal output for this chat, but
+  device authorization has not completed. The pending login process was stopped
+  when account approval was unavailable. To continue, run
+  `gh auth login --hostname github.com --git-protocol https --web --skip-ssh-key`,
+  sign in and approve the device code in the browser, then confirm
+  `gh auth status` before creating the private repository and pushing `main`.
 - `.gitignore` excludes the virtual environment, model weights, Python caches,
   generated run folders, and local demo clips. `.vscode` is intentionally not
   included.
