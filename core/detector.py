@@ -1,5 +1,6 @@
 import argparse
 import csv
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -7,21 +8,25 @@ import re
 import sys
 import time
 from collections import Counter
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 import cv2
 import numpy as np
 import torch
+import yaml
 from imageio_ffmpeg import write_frames
 from ultralytics import YOLO
 
 from core.config import (
     CONFIDENCE_THRESHOLD,
+    CLASS_CONFIDENCE_OVERRIDES,
     DEFAULT_CLASSES,
     IMAGE_SIZE,
+    MIN_BOX_PX,
     MIN_TRACK_FRAMES,
     MODEL_NAME,
     OUTPUTS_DIR,
+    TRACKER_CONFIG_PATH,
 )
 from core.video_source import VideoSource, VideoSourceError
 
@@ -47,6 +52,8 @@ CSV_COLUMNS = (
     "min_box_px",
     "processing_seconds",
     "device",
+    "confidence_overrides",
+    "track_buffer",
 )
 
 
@@ -89,6 +96,12 @@ def _write_csv(
     processing_seconds: float,
     device: str,
     model_name: str,
+    confidence: float,
+    imgsz: int,
+    min_track_frames: int,
+    min_box_px: int,
+    confidence_overrides: Mapping[str, float],
+    track_buffer: int,
 ) -> None:
     with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=CSV_COLUMNS)
@@ -111,12 +124,18 @@ def _write_csv(
                     "avg_confidence": "",
                     "snapshot_path": "",
                     "model": model_name,
-                    "confidence": CONFIDENCE_THRESHOLD,
-                    "imgsz": IMAGE_SIZE,
-                    "min_track_frames": MIN_TRACK_FRAMES,
-                    "min_box_px": 0,
+                    "confidence": confidence,
+                    "imgsz": imgsz,
+                    "min_track_frames": min_track_frames,
+                    "min_box_px": min_box_px,
                     "processing_seconds": round(processing_seconds, 6),
                     "device": device,
+                    "confidence_overrides": json.dumps(
+                        confidence_overrides,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    "track_buffer": track_buffer,
                 }
             )
             return
@@ -135,12 +154,18 @@ def _write_csv(
                     "avg_confidence": round(track.avg_confidence, 5),
                     "snapshot_path": track.snapshot_path.relative_to(csv_path.parent).as_posix(),
                     "model": model_name,
-                    "confidence": CONFIDENCE_THRESHOLD,
-                    "imgsz": IMAGE_SIZE,
-                    "min_track_frames": MIN_TRACK_FRAMES,
-                    "min_box_px": 0,
+                    "confidence": confidence,
+                    "imgsz": imgsz,
+                    "min_track_frames": min_track_frames,
+                    "min_box_px": min_box_px,
                     "processing_seconds": round(processing_seconds, 6),
                     "device": device,
+                    "confidence_overrides": json.dumps(
+                        confidence_overrides,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    "track_buffer": track_buffer,
                 }
             )
 
@@ -154,6 +179,12 @@ def run_detection(
     preview_max_width: int = 640,
     output_root: str | Path = OUTPUTS_DIR,
     model_name: str = MODEL_NAME,
+    confidence_threshold: float = CONFIDENCE_THRESHOLD,
+    imgsz: int = IMAGE_SIZE,
+    min_track_frames: int = MIN_TRACK_FRAMES,
+    min_box_px: int = MIN_BOX_PX,
+    confidence_overrides: Mapping[str, float] | None = None,
+    tracker_config: str | Path = TRACKER_CONFIG_PATH,
 ) -> Path:
     """Track selected COCO classes and optionally stream RGB preview frames."""
     if not torch.cuda.is_available():
@@ -168,6 +199,25 @@ def run_detection(
         raise ValueError("Select at least one object class before running detection.")
     if len(set(classes)) != len(classes):
         raise ValueError("Selected object classes must not contain duplicates.")
+    if not 0 <= confidence_threshold <= 1:
+        raise ValueError("Confidence threshold must be between 0 and 1.")
+    if imgsz <= 0 or min_track_frames <= 0 or min_box_px < 0:
+        raise ValueError("Image size and minimum track length must be positive; pixel settings cannot be negative.")
+    overrides = dict(
+        CLASS_CONFIDENCE_OVERRIDES
+        if confidence_overrides is None
+        else confidence_overrides
+    )
+    if any(not 0 <= value <= 1 for value in overrides.values()):
+        raise ValueError("Per-class confidence thresholds must be between 0 and 1.")
+    tracker_config = Path(tracker_config)
+    if not tracker_config.is_file():
+        raise FileNotFoundError(f"Tracker configuration does not exist: {tracker_config}")
+    with tracker_config.open(encoding="utf-8") as tracker_file:
+        tracker_settings = yaml.safe_load(tracker_file)
+    if not isinstance(tracker_settings, dict) or "track_buffer" not in tracker_settings:
+        raise ValueError(f"Tracker config is missing track_buffer: {tracker_config}")
+    track_buffer = int(tracker_settings["track_buffer"])
 
     started_at = time.perf_counter()
     with VideoSource(video_path) as source:
@@ -206,10 +256,10 @@ def run_detection(
                 result = model.track(
                     frame,
                     persist=True,
-                    tracker="bytetrack.yaml",
+                    tracker=str(tracker_config),
                     classes=selected_class_ids,
-                    conf=CONFIDENCE_THRESHOLD,
-                    imgsz=IMAGE_SIZE,
+                    conf=min([confidence_threshold, *overrides.values()]),
+                    imgsz=imgsz,
                     device=0,
                     verbose=False,
                 )[0]
@@ -224,6 +274,13 @@ def run_detection(
                         boxes, class_ids, confidences, track_ids
                     ):
                         class_name = names_by_id[int(class_id)]
+                        if float(confidence) < overrides.get(class_name, confidence_threshold):
+                            continue
+                        if min_box_px and (
+                            float(box[2]) - float(box[0]) < min_box_px
+                            or float(box[3]) - float(box[1]) < min_box_px
+                        ):
+                            continue
                         track = tracks.get(track_id)
                         x1, y1, x2, y2 = (
                             max(0, int(box[0])),
@@ -277,7 +334,7 @@ def run_detection(
                     live_counts = Counter(
                         track.class_name
                         for track in tracks.values()
-                        if track.frames_seen >= MIN_TRACK_FRAMES
+                        if track.frames_seen >= min_track_frames
                     )
                     preview_callback(
                         preview_frame,
@@ -302,7 +359,7 @@ def run_detection(
 
         kept_track_ids = {
             track_id for track_id, track in tracks.items()
-            if track.frames_seen >= MIN_TRACK_FRAMES
+            if track.frames_seen >= min_track_frames
         }
         for track_id, track in tracks.items():
             if track_id not in kept_track_ids and track.snapshot_path.exists():
@@ -319,6 +376,12 @@ def run_detection(
             processing_seconds,
             torch.cuda.get_device_name(0),
             model_name,
+            confidence_threshold,
+            imgsz,
+            min_track_frames,
+            min_box_px,
+            overrides,
+            track_buffer,
         )
         return run_dir
 

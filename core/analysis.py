@@ -34,6 +34,8 @@ class AnalysisResult:
     processing_seconds: float | None = None
     device: str | None = None
     location: str | None = None
+    confidence_overrides: str | None = None
+    track_buffer: int | None = None
 
     @property
     def processing_fps(self) -> float | None:
@@ -224,8 +226,10 @@ def analyze_csv(
         "processing_seconds": _optional_metadata(detections, "processing_seconds", numeric=True),
         "device": _optional_metadata(detections, "device"),
         "location": _optional_metadata(detections, "location"),
+        "confidence_overrides": _optional_metadata(detections, "confidence_overrides"),
+        "track_buffer": _optional_metadata(detections, "track_buffer", numeric=True),
     }
-    for field in ("imgsz", "min_track_frames", "min_box_px"):
+    for field in ("imgsz", "min_track_frames", "min_box_px", "track_buffer"):
         if metadata[field] is not None:
             metadata[field] = int(metadata[field])
     return AnalysisResult(

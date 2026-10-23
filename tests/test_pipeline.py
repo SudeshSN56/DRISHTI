@@ -101,6 +101,7 @@ class PipelineTests(unittest.TestCase):
         output_root,
         preview_callback=None,
         preview_max_width=640,
+        **options,
     ):
         with (
             patch("core.detector.torch.cuda.is_available", return_value=True),
@@ -114,6 +115,7 @@ class PipelineTests(unittest.TestCase):
                 preview_callback=preview_callback,
                 preview_max_width=preview_max_width,
                 model_name="fake.pt",
+                **options,
             )
 
     def test_video_source_rejects_corrupt_video(self):
@@ -164,6 +166,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(int(rows[0]["min_box_px"]), 0)
         self.assertGreater(float(rows[0]["processing_seconds"]), 0)
         self.assertEqual(rows[0]["device"], "Test CUDA")
+        self.assertEqual(rows[0]["confidence_overrides"], "{}")
+        self.assertEqual(rows[0]["track_buffer"], "30")
         snapshot = cv2.imread(str(run_dir / rows[0]["snapshot_path"]))
         self.assertIsNotNone(snapshot)
         capture = cv2.VideoCapture(str(video_path))
@@ -178,6 +182,7 @@ class PipelineTests(unittest.TestCase):
             "Snapshot should come from the highest-confidence frame.",
         )
         self.assertTrue(all(call["classes"] == [3] for call in FakeYOLO.track_kwargs))
+        self.assertTrue(all(call["tracker"].endswith("bytetrack.yaml") for call in FakeYOLO.track_kwargs))
 
         capture = cv2.VideoCapture(str(run_dir / "annotated.mp4"))
         self.assertTrue(capture.isOpened())
@@ -315,6 +320,52 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(analysis.min_box_px, None)
         self.assertEqual(analysis.processing_seconds, None)
         self.assertIsNone(analysis.processing_fps)
+
+    def test_minimum_box_size_filters_tracks_without_changing_default(self):
+        video_path = self.make_video("small_boxes.mp4", frame_count=6)
+        FakeYOLO.detections = [
+            [(41, [20, 15, 60, 90], 3, 0.9)]
+            for _ in range(6)
+        ]
+        run_dir = self.run_with_fake_model(
+            video_path,
+            ["car"],
+            self.root / "box_runs",
+        )
+        self.assertEqual(
+            analyze_csv(run_dir / "detections.csv").counts.to_dict("records"),
+            [{"class": "car", "count": 1}],
+            "Default minimum box size must preserve current counting behavior.",
+        )
+
+        FakeYOLO.detections = [
+            [(41, [20, 15, 60, 90], 3, 0.9)]
+            for _ in range(6)
+        ]
+        filtered_dir = self.run_with_fake_model(
+            video_path,
+            ["car"],
+            self.root / "filtered_box_runs",
+            min_box_px=50,
+        )
+        self.assertTrue(
+            analyze_csv(filtered_dir / "detections.csv").counts.empty
+        )
+
+    def test_per_class_confidence_override_filters_low_confidence_tracks(self):
+        video_path = self.make_video("confidence_override.mp4", frame_count=6)
+        FakeYOLO.detections = [
+            [(42, [20, 15, 80, 90], 3, 0.45)]
+            for _ in range(6)
+        ]
+        run_dir = self.run_with_fake_model(
+            video_path,
+            ["car"],
+            self.root / "override_runs",
+            confidence_overrides={"car": 0.5},
+        )
+        self.assertTrue(analyze_csv(run_dir / "detections.csv").counts.empty)
+        self.assertTrue(all(call["conf"] == 0.35 for call in FakeYOLO.track_kwargs))
 
     def test_video_over_five_minutes_processes_without_full_frame_retention(self):
         video_path = self.make_video("long.mp4", frame_count=1501)

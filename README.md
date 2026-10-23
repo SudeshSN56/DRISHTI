@@ -81,6 +81,14 @@ analysis from source frame count and this elapsed time. Older CSV files without
 these provenance columns remain supported; absent values are treated as
 unrecorded.
 
+Filtering controls remain behavior-preserving by default: `MIN_BOX_PX = 0`
+disables the box-size filter, `CLASS_CONFIDENCE_OVERRIDES = {}` applies no
+per-class confidence changes, and `core/bytetrack.yaml` uses the installed
+Ultralytics ByteTrack defaults (including `track_buffer: 30`). The box-size
+filter, when enabled, rejects detections whose width **or** height is below
+the configured number of pixels in the source frame. Detection settings are
+visible in Analyze and recorded in each new run's CSV.
+
 ## Phase 3: Streamlit app
 
 Start the local app:

@@ -123,6 +123,15 @@ def render_results(run_dir: Path) -> None:
                 f"{analysis.min_box_px}px" if analysis.min_box_px is not None else "Not recorded",
             ),
             (
+                "Per-class confidence overrides",
+                analysis.confidence_overrides or "Not recorded",
+            ),
+            (
+                "ByteTrack buffer",
+                f"{analysis.track_buffer} frames"
+                if analysis.track_buffer is not None else "Not recorded",
+            ),
+            (
                 "Processing time",
                 f"{analysis.processing_seconds:.2f}s"
                 if analysis.processing_seconds is not None else "Not recorded",

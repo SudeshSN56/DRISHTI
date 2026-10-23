@@ -9,13 +9,17 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
+import yaml
 
 from core.config import (
+    CLASS_CONFIDENCE_OVERRIDES,
     CONFIDENCE_THRESHOLD,
     DEFAULT_CLASSES,
     IMAGE_SIZE,
     MIN_TRACK_FRAMES,
+    MIN_BOX_PX,
     MODEL_NAME,
+    TRACKER_CONFIG_PATH,
 )
 from core import detector
 from core.video_source import VideoSource, VideoSourceError
@@ -63,8 +67,20 @@ def render_analyze(
     with settings_column:
         parameter_rows = (
             ("CONFIDENCE", f"{CONFIDENCE_THRESHOLD:.2f}"),
+            (
+                "CLASS CONFIDENCE",
+                ", ".join(
+                    f"{name}: {threshold:.2f}"
+                    for name, threshold in sorted(CLASS_CONFIDENCE_OVERRIDES.items())
+                ) or "No overrides",
+            ),
             ("IMAGE SIZE", f"{IMAGE_SIZE}px"),
             ("MIN TRACK LENGTH", f"{MIN_TRACK_FRAMES} frames"),
+            ("MIN BOX SIZE", f"{MIN_BOX_PX}px" if MIN_BOX_PX else "Disabled"),
+            (
+                "TRACKER BUFFER",
+                f"{_tracker_buffer()} frames",
+            ),
             ("INFERENCE DEVICE", "CUDA" if torch.cuda.is_available() else "CPU"),
         )
         parameter_html = "".join(
@@ -186,3 +202,11 @@ def render_analyze(
     selected_run = st.session_state.get("selected_run_dir")
     if selected_run and (Path(selected_run) / "detections.csv").is_file():
         render_results(Path(selected_run))
+
+
+def _tracker_buffer() -> int:
+    with TRACKER_CONFIG_PATH.open(encoding="utf-8") as tracker_file:
+        tracker_settings = yaml.safe_load(tracker_file)
+    if not isinstance(tracker_settings, dict) or "track_buffer" not in tracker_settings:
+        raise ValueError(f"Tracker config is missing track_buffer: {TRACKER_CONFIG_PATH}")
+    return int(tracker_settings["track_buffer"])
