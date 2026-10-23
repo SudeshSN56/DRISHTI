@@ -290,3 +290,20 @@ plan is being followed phase by phase.
   click **Run** to see live annotated frames/counts and the saved results.
 - The server was started with
   `venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true`.
+
+## 23 October 2026 — UI redesign handoff and app run
+
+- Completed and committed the Streamlit command-console redesign on branch
+  `ui-redesign` as `27aa42f` (`Redesign Streamlit command console UI`).
+- Validation: all 15 tests pass, Python compilation and `git diff --check` pass,
+  Streamlit's local health endpoint returns HTTP 200, and browser/AppTest
+  smoke checks cover Analyze, CSV-based zero-detection and populated Results,
+  Run Explorer selection, and Object Dossier navigation.
+- No inference pipeline, detector/video source, CSV schema, or runtime
+  dependency was changed. Print Brief remains generated only on request.
+- The app is currently running at `http://localhost:8501`; its health endpoint
+  returned HTTP 200 during this session.
+- The user requested publishing the work to GitHub. `origin` is
+  `https://github.com/SudeshSN56/DRISHTI.git`, but `gh auth status` reports
+  that no GitHub host is authenticated. The redesign commit is local on
+  `ui-redesign`; push requires GitHub authentication.
