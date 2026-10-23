@@ -3,6 +3,26 @@
 Project: Drone Surveillance Report System  
 Last updated: 23 October 2026
 
+## UI redesign — 23 October 2026
+
+- Started from the clean committed `main` state on the `ui-redesign` branch.
+- Replaced the single-page app UI with modular Streamlit pages for Analyze,
+  Results, Run Explorer, and Object Dossier. Kept the detector, video source,
+  report pipeline, CSV schema, and runtime dependencies unchanged.
+- Added graphite dark/light CSS themes, a run/device/model/status top bar,
+  persistent class legend, reusable console components, and accessible
+  reduced-motion/focus styling.
+- Added CSV-derived summary KPIs and pure responsive SVG class, five-second
+  timeline, and stacked class-mix charts. Added snapshot dossier navigation,
+  sortable/filterable run history, and print stylesheet.
+- Existing nine tests passed before UI changes; all 15 tests pass with the new
+  chart/filter helper coverage. The AppTest run-mocking seam was preserved.
+- Launched Streamlit 1.66.0 and verified its local health endpoint, Analyze,
+  zero-detection Results, and Run Explorer in a browser.
+- Stretch work intentionally skipped: source-video retention, batch uploads,
+  natural-language CSV queries, and a confidence histogram. Processing speed
+  remains “Not recorded” because the current CSV does not include it.
+
 This file records the implementation updates completed in this chat. The project
 plan is being followed phase by phase.
 

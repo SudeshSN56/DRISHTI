@@ -46,3 +46,12 @@ real-footage work: compare predictions against suitable VisDrone ground-truth
 annotations, measure memory on real 1080p stress footage, and test high-altitude
 and separate stock clips if available. No VisDrone video/annotation data should
 be committed or redistributed without confirming the provider's terms.
+
+## UI redesign
+
+The `ui-redesign` branch replaces the single-page Streamlit interface with a
+graphite command console. UI modules provide shared theme/components, pure SVG
+charts, CSV-derived run filtering and object dossiers, and Analyze, Results,
+Run Explorer, and Object Dossier pages. No pipeline behavior or CSV schema is
+changed. Processing throughput remains unavailable because it is not recorded
+in the existing CSV.

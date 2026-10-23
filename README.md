@@ -89,6 +89,19 @@ charts, a first-seen timeline, a summary, the annotated video, and snapshots.
 Download the CSV or select a previous run from the results list. Corrupt video
 files show a clear error; videos over five minutes show a warning but still run.
 
+The interface is a graphite-themed command and intelligence console with dark
+and light modes, an Analyze page, CSV-driven Results, a filterable Run Explorer,
+and per-track Object Dossiers. Results include responsive hand-built SVG class,
+timeline, and class-mix charts; PDF charts continue to use Matplotlib. The CSV
+remains the source of truth, and a PDF is generated only after **Print Brief**.
+CSV processing throughput is not currently written to the CSV, so the UI
+identifies it as not recorded instead of estimating it. The interface uses no
+new runtime dependencies.
+
+The theme uses IBM Plex Sans and IBM Plex Mono from Google Fonts with system
+font fallbacks when offline. To open the application in a browser, run
+`.\venv\Scripts\python.exe -m streamlit run app.py`.
+
 ## Phase 4: Print Brief
 
 Select any run with a `detections.csv`, then click **Print Brief** to create
@@ -150,6 +163,12 @@ From a fresh PowerShell window in the project directory:
 Small objects at altitude may be missed; tracking can split or merge IDs, so
 counts are approximate. Live streams, GPS, thermal/night footage, model
 training, and cloud processing are outside this version's scope.
+
+## Future work
+
+Batch video queues, source-video retention for original-versus-annotated
+comparison, and a natural-language CSV query box are possible future
+enhancements. They are intentionally not part of this UI redesign.
 
 Ultralytics YOLO is licensed under AGPL-3.0. Review its terms before
 redistributing or deploying software that uses it.
