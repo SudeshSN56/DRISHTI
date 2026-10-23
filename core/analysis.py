@@ -25,6 +25,41 @@ class AnalysisResult:
     counts: pd.DataFrame
     timeline: pd.DataFrame
     summary: str
+    fps: float | None = None
+    model: str | None = None
+    confidence: float | None = None
+    imgsz: int | None = None
+    min_track_frames: int | None = None
+    min_box_px: int | None = None
+    processing_seconds: float | None = None
+    device: str | None = None
+    location: str | None = None
+
+    @property
+    def processing_fps(self) -> float | None:
+        if self.fps is None or self.processing_seconds is None:
+            return None
+        if self.processing_seconds <= 0:
+            return None
+        return self.video_duration_sec * self.fps / self.processing_seconds
+
+
+def _optional_metadata(detections: pd.DataFrame, column: str, numeric: bool = False):
+    if column not in detections.columns:
+        return None
+    values = detections[column].dropna().unique()
+    if len(values) == 0:
+        return None
+    if len(values) != 1:
+        raise ValueError(f"Detection CSV contains inconsistent {column} metadata.")
+    value = values[0]
+    if numeric:
+        converted = pd.to_numeric(pd.Series([value]), errors="raise").iloc[0]
+        if not pd.notna(converted):
+            return None
+        return float(converted)
+    text = str(value).strip()
+    return text or None
 
 
 def _format_time(seconds: float) -> str:
@@ -179,6 +214,20 @@ def analyze_csv(
     classes = sorted(counts["class"].tolist())
     timeline = _build_timeline(valid, duration_sec, bucket_seconds, classes)
     summary = _build_summary(video_name, duration_sec, counts, timeline)
+    metadata = {
+        "fps": _optional_metadata(detections, "fps", numeric=True),
+        "model": _optional_metadata(detections, "model"),
+        "confidence": _optional_metadata(detections, "confidence", numeric=True),
+        "imgsz": _optional_metadata(detections, "imgsz", numeric=True),
+        "min_track_frames": _optional_metadata(detections, "min_track_frames", numeric=True),
+        "min_box_px": _optional_metadata(detections, "min_box_px", numeric=True),
+        "processing_seconds": _optional_metadata(detections, "processing_seconds", numeric=True),
+        "device": _optional_metadata(detections, "device"),
+        "location": _optional_metadata(detections, "location"),
+    }
+    for field in ("imgsz", "min_track_frames", "min_box_px"):
+        if metadata[field] is not None:
+            metadata[field] = int(metadata[field])
     return AnalysisResult(
         video_name=video_name,
         video_duration_sec=duration_sec,
@@ -186,4 +235,5 @@ def analyze_csv(
         counts=counts,
         timeline=timeline,
         summary=summary,
+        **metadata,
     )

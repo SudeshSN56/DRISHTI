@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import re
 import sys
+import time
 from collections import Counter
 from typing import Callable, Sequence
 
@@ -39,6 +40,13 @@ CSV_COLUMNS = (
     "last_seen_sec",
     "avg_confidence",
     "snapshot_path",
+    "model",
+    "confidence",
+    "imgsz",
+    "min_track_frames",
+    "min_box_px",
+    "processing_seconds",
+    "device",
 )
 
 
@@ -78,6 +86,9 @@ def _write_csv(
     fps: float,
     processed_at: str,
     tracks: dict[int, TrackSummary],
+    processing_seconds: float,
+    device: str,
+    model_name: str,
 ) -> None:
     with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=CSV_COLUMNS)
@@ -99,6 +110,13 @@ def _write_csv(
                     "last_seen_sec": "",
                     "avg_confidence": "",
                     "snapshot_path": "",
+                    "model": model_name,
+                    "confidence": CONFIDENCE_THRESHOLD,
+                    "imgsz": IMAGE_SIZE,
+                    "min_track_frames": MIN_TRACK_FRAMES,
+                    "min_box_px": 0,
+                    "processing_seconds": round(processing_seconds, 6),
+                    "device": device,
                 }
             )
             return
@@ -116,6 +134,13 @@ def _write_csv(
                     "last_seen_sec": round(track.last_seen_sec, 3),
                     "avg_confidence": round(track.avg_confidence, 5),
                     "snapshot_path": track.snapshot_path.relative_to(csv_path.parent).as_posix(),
+                    "model": model_name,
+                    "confidence": CONFIDENCE_THRESHOLD,
+                    "imgsz": IMAGE_SIZE,
+                    "min_track_frames": MIN_TRACK_FRAMES,
+                    "min_box_px": 0,
+                    "processing_seconds": round(processing_seconds, 6),
+                    "device": device,
                 }
             )
 
@@ -144,6 +169,7 @@ def run_detection(
     if len(set(classes)) != len(classes):
         raise ValueError("Selected object classes must not contain duplicates.")
 
+    started_at = time.perf_counter()
     with VideoSource(video_path) as source:
         metadata = source.metadata
         model = YOLO(model_name)
@@ -282,6 +308,7 @@ def run_detection(
             if track_id not in kept_track_ids and track.snapshot_path.exists():
                 track.snapshot_path.unlink()
 
+        processing_seconds = time.perf_counter() - started_at
         _write_csv(
             run_dir / "detections.csv",
             metadata.path.name,
@@ -289,6 +316,9 @@ def run_detection(
             metadata.fps,
             timestamp,
             tracks,
+            processing_seconds,
+            torch.cuda.get_device_name(0),
+            model_name,
         )
         return run_dir
 

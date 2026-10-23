@@ -104,6 +104,7 @@ class PipelineTests(unittest.TestCase):
     ):
         with (
             patch("core.detector.torch.cuda.is_available", return_value=True),
+            patch("core.detector.torch.cuda.get_device_name", return_value="Test CUDA"),
             patch("core.detector.YOLO", FakeYOLO),
         ):
             return run_detection(
@@ -156,6 +157,13 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(rows[0]["track_id"], "11")
         self.assertEqual(rows[0]["class"], "car")
         self.assertEqual(rows[0]["avg_confidence"], "0.65")
+        self.assertEqual(rows[0]["model"], "fake.pt")
+        self.assertEqual(float(rows[0]["confidence"]), 0.35)
+        self.assertEqual(int(rows[0]["imgsz"]), 960)
+        self.assertEqual(int(rows[0]["min_track_frames"]), 5)
+        self.assertEqual(int(rows[0]["min_box_px"]), 0)
+        self.assertGreater(float(rows[0]["processing_seconds"]), 0)
+        self.assertEqual(rows[0]["device"], "Test CUDA")
         snapshot = cv2.imread(str(run_dir / rows[0]["snapshot_path"]))
         self.assertIsNotNone(snapshot)
         capture = cv2.VideoCapture(str(video_path))
@@ -184,6 +192,12 @@ class PipelineTests(unittest.TestCase):
 
         analysis = analyze_csv(run_dir / "detections.csv")
         self.assertEqual(analysis.counts.to_dict("records"), [{"class": "car", "count": 1}])
+        processing_seconds = float(rows[0]["processing_seconds"])
+        source_frames = float(rows[0]["video_duration_sec"]) * float(rows[0]["fps"])
+        self.assertAlmostEqual(
+            analysis.processing_fps,
+            source_frames / processing_seconds,
+        )
 
     def test_frame_folder_stitches_naturally_sorted_frames_to_h264(self):
         sequence = self.root / "dataset" / "sequence_1"
@@ -264,12 +278,43 @@ class PipelineTests(unittest.TestCase):
         ) as csv_file:
             rows = list(csv.DictReader(csv_file))
         self.assertEqual(rows[0]["class"], "__none__")
+        self.assertTrue(rows[0]["model"])
+        self.assertGreater(float(rows[0]["processing_seconds"]), 0)
 
         analysis = analyze_csv(run_dir / "detections.csv")
         self.assertTrue(analysis.counts.empty)
+        self.assertIsNotNone(analysis.processing_fps)
         brief_path = build_brief(run_dir / "detections.csv")
         self.assertTrue(brief_path.is_file())
         self.assertTrue(brief_path.read_bytes().startswith(b"%PDF-"))
+
+    def test_legacy_csv_missing_provenance_loads_with_not_recorded_values(self):
+        csv_path = self.root / "legacy.csv"
+        with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(
+                (
+                    "video_name",
+                    "video_duration_sec",
+                    "fps",
+                    "processed_at",
+                    "track_id",
+                    "class",
+                    "first_seen_sec",
+                    "last_seen_sec",
+                    "avg_confidence",
+                    "snapshot_path",
+                )
+            )
+            writer.writerow(("legacy.mp4", 10, 30, "2026-01-01T00:00:00Z", 1, "car", 1, 2, 0.8, ""))
+        analysis = analyze_csv(csv_path)
+        self.assertEqual(analysis.model, None)
+        self.assertEqual(analysis.confidence, None)
+        self.assertEqual(analysis.imgsz, None)
+        self.assertEqual(analysis.min_track_frames, None)
+        self.assertEqual(analysis.min_box_px, None)
+        self.assertEqual(analysis.processing_seconds, None)
+        self.assertIsNone(analysis.processing_fps)
 
     def test_video_over_five_minutes_processes_without_full_frame_retention(self):
         video_path = self.make_video("long.mp4", frame_count=1501)
@@ -278,6 +323,7 @@ class PipelineTests(unittest.TestCase):
         output_root = self.root / "long_runs"
         with (
             patch("core.detector.torch.cuda.is_available", return_value=True),
+            patch("core.detector.torch.cuda.get_device_name", return_value="Test CUDA"),
             patch("core.detector.YOLO", FakeYOLO),
         ):
             run_dir = run_detection(

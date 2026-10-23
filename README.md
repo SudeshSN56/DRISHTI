@@ -73,6 +73,14 @@ metadata, unique track counts by class, a five-second first-seen timeline with
 zero-count buckets, and a template-based summary. It also handles the
 `__none__` placeholder without requiring other run files.
 
+New runs also repeat their model, confidence, image size, minimum track length,
+minimum box size, processing time, and CUDA device on each CSV row. Processing
+time includes video validation, model loading, inference, and annotated-video
+encoding; it stops before CSV serialization. Processing FPS is derived during
+analysis from source frame count and this elapsed time. Older CSV files without
+these provenance columns remain supported; absent values are treated as
+unrecorded.
+
 ## Phase 3: Streamlit app
 
 Start the local app:
