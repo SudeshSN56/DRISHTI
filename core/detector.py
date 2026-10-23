@@ -22,6 +22,8 @@ from core.config import (
     CLASS_CONFIDENCE_OVERRIDES,
     DEFAULT_CLASSES,
     IMAGE_SIZE,
+    MAX_INFERENCE_WIDTH,
+    HALF_PRECISION,
     MIN_BOX_PX,
     MIN_TRACK_FRAMES,
     MODEL_NAME,
@@ -54,6 +56,8 @@ CSV_COLUMNS = (
     "device",
     "confidence_overrides",
     "track_buffer",
+    "max_inference_width",
+    "half_precision",
 )
 
 
@@ -86,6 +90,40 @@ def _safe_class_name(name: str) -> str:
     return safe_name or "object"
 
 
+def resize_for_inference(
+    frame: np.ndarray,
+    max_width: int,
+) -> tuple[np.ndarray, float, float]:
+    """Resize only for inference and return source-pixel scale factors."""
+    if max_width < 0:
+        raise ValueError("Maximum inference width cannot be negative.")
+    height, width = frame.shape[:2]
+    if max_width == 0 or width <= max_width:
+        return frame, 1.0, 1.0
+    resized_height = max(1, round(height * max_width / width))
+    resized = cv2.resize(
+        frame,
+        (max_width, resized_height),
+        interpolation=cv2.INTER_AREA,
+    )
+    return resized, width / max_width, height / resized_height
+
+
+def map_box_to_source(
+    box: Sequence[float],
+    scale_x: float,
+    scale_y: float,
+    source_width: int,
+    source_height: int,
+) -> tuple[int, int, int, int]:
+    return (
+        max(0, int(box[0] * scale_x)),
+        max(0, int(box[1] * scale_y)),
+        min(source_width, int(box[2] * scale_x)),
+        min(source_height, int(box[3] * scale_y)),
+    )
+
+
 def _write_csv(
     csv_path: Path,
     video_name: str,
@@ -102,13 +140,15 @@ def _write_csv(
     min_box_px: int,
     confidence_overrides: Mapping[str, float],
     track_buffer: int,
+    max_inference_width: int,
+    half_precision: bool,
 ) -> None:
     with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=CSV_COLUMNS)
         writer.writeheader()
         kept_tracks = [
             track for track in tracks.values()
-            if track.frames_seen >= MIN_TRACK_FRAMES
+            if track.frames_seen >= min_track_frames
         ]
         if not kept_tracks:
             writer.writerow(
@@ -136,6 +176,8 @@ def _write_csv(
                         separators=(",", ":"),
                     ),
                     "track_buffer": track_buffer,
+                    "max_inference_width": max_inference_width,
+                    "half_precision": half_precision,
                 }
             )
             return
@@ -166,6 +208,8 @@ def _write_csv(
                         separators=(",", ":"),
                     ),
                     "track_buffer": track_buffer,
+                    "max_inference_width": max_inference_width,
+                    "half_precision": half_precision,
                 }
             )
 
@@ -185,6 +229,8 @@ def run_detection(
     min_box_px: int = MIN_BOX_PX,
     confidence_overrides: Mapping[str, float] | None = None,
     tracker_config: str | Path = TRACKER_CONFIG_PATH,
+    max_inference_width: int = MAX_INFERENCE_WIDTH,
+    half_precision: bool = HALF_PRECISION,
 ) -> Path:
     """Track selected COCO classes and optionally stream RGB preview frames."""
     if not torch.cuda.is_available():
@@ -203,6 +249,8 @@ def run_detection(
         raise ValueError("Confidence threshold must be between 0 and 1.")
     if imgsz <= 0 or min_track_frames <= 0 or min_box_px < 0:
         raise ValueError("Image size and minimum track length must be positive; pixel settings cannot be negative.")
+    if max_inference_width < 0:
+        raise ValueError("Maximum inference width cannot be negative.")
     overrides = dict(
         CLASS_CONFIDENCE_OVERRIDES
         if confidence_overrides is None
@@ -253,14 +301,21 @@ def run_detection(
                 if not readable:
                     break
 
-                result = model.track(
+                source_height, source_width = frame.shape[:2]
+                inference_frame, scale_x, scale_y = resize_for_inference(
                     frame,
+                    max_inference_width,
+                )
+
+                result = model.track(
+                    inference_frame,
                     persist=True,
                     tracker=str(tracker_config),
                     classes=selected_class_ids,
                     conf=min([confidence_threshold, *overrides.values()]),
                     imgsz=imgsz,
                     device=0,
+                    quantize=16 if half_precision else None,
                     verbose=False,
                 )[0]
 
@@ -282,11 +337,12 @@ def run_detection(
                         ):
                             continue
                         track = tracks.get(track_id)
-                        x1, y1, x2, y2 = (
-                            max(0, int(box[0])),
-                            max(0, int(box[1])),
-                            min(metadata.width, int(box[2])),
-                            min(metadata.height, int(box[3])),
+                        x1, y1, x2, y2 = map_box_to_source(
+                            box,
+                            scale_x,
+                            scale_y,
+                            metadata.width,
+                            metadata.height,
                         )
                         if track is None:
                             snapshot_path = snapshots_dir / (
@@ -316,6 +372,12 @@ def run_detection(
                             track.best_confidence = float(confidence)
 
                 annotated_frame = result.plot()
+                if annotated_frame.shape[:2] != (metadata.height, metadata.width):
+                    annotated_frame = cv2.resize(
+                        annotated_frame,
+                        (metadata.width, metadata.height),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
                 frame_index += 1
                 if preview_callback is not None and (
                     frame_index % preview_every_n_frames == 0
@@ -382,6 +444,8 @@ def run_detection(
             min_box_px,
             overrides,
             track_buffer,
+            max_inference_width,
+            half_precision,
         )
         return run_dir
 

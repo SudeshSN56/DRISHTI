@@ -52,6 +52,21 @@ be committed or redistributed without confirming the provider's terms.
 The `ui-redesign` branch replaces the single-page Streamlit interface with a
 graphite command console. UI modules provide shared theme/components, pure SVG
 charts, CSV-derived run filtering and object dossiers, and Analyze, Results,
-Run Explorer, and Object Dossier pages. No pipeline behavior or CSV schema is
-changed. Processing throughput remains unavailable because it is not recorded
-in the existing CSV.
+Run Explorer, and Object Dossier pages.
+
+## Quality and handover improvements
+
+On `quality-improvements`, each new run CSV records detector parameters and
+processing provenance; older CSVs remain supported and report absent values as
+not recorded. Defaults for minimum box size, per-class confidence, maximum
+inference width, and FP16 remain disabled/unchanged. A project-owned ByteTrack
+configuration matches the installed Ultralytics defaults. A manual-count
+evaluation tool supports CSV/run comparisons and a small configurable sweep.
+
+Inference resizing is tested to map bounding boxes back to source-frame
+coordinates and preserve full-resolution snapshots and annotated output. For
+the 2688x1512, 233-frame `uav0000137_00458_v.mp4` clip, a single RTX 4060 Laptop
+GPU run at default width took 29.96s (7.78 FPS) and returned 256 unique tracks;
+a single 1280px inference-width run took 29.26s (7.96 FPS) and returned 204.
+These are individual observations, not a benchmark or accuracy comparison.
+Because counts changed, the optional width reduction stays disabled by default.

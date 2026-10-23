@@ -132,6 +132,17 @@ def render_results(run_dir: Path) -> None:
                 if analysis.track_buffer is not None else "Not recorded",
             ),
             (
+                "Maximum inference width",
+                f"{analysis.max_inference_width}px"
+                if analysis.max_inference_width else "Disabled"
+                if analysis.max_inference_width == 0 else "Not recorded",
+            ),
+            (
+                "Half precision",
+                "Enabled" if analysis.half_precision else "Disabled"
+                if analysis.half_precision is not None else "Not recorded",
+            ),
+            (
                 "Processing time",
                 f"{analysis.processing_seconds:.2f}s"
                 if analysis.processing_seconds is not None else "Not recorded",

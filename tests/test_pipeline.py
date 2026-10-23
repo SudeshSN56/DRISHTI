@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 
 from core.analysis import analyze_csv
-from core.detector import run_detection
+from core.detector import map_box_to_source, resize_for_inference, run_detection
 from core.report import build_brief
 from core.video_source import VideoSource, VideoSourceError
 from tools.frames_to_video import stitch_sequence
@@ -51,12 +51,14 @@ class FakeYOLO:
     names = {3: "car", 8: "person"}
     detections = []
     track_kwargs = []
+    input_shapes = []
 
     def __init__(self, _model_name):
         self.frame_index = 0
 
     def track(self, frame, **kwargs):
         type(self).track_kwargs.append(kwargs)
+        type(self).input_shapes.append(frame.shape[:2])
         detections = type(self).detections[self.frame_index]
         self.frame_index += 1
         return [FakeResult(frame, detections)]
@@ -67,6 +69,7 @@ class PipelineTests(unittest.TestCase):
         self.temp_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_directory.name)
         FakeYOLO.track_kwargs = []
+        FakeYOLO.input_shapes = []
 
     def tearDown(self):
         self.temp_directory.cleanup()
@@ -366,6 +369,44 @@ class PipelineTests(unittest.TestCase):
         )
         self.assertTrue(analyze_csv(run_dir / "detections.csv").counts.empty)
         self.assertTrue(all(call["conf"] == 0.35 for call in FakeYOLO.track_kwargs))
+
+    def test_inference_width_resizes_and_maps_boxes_to_source_pixels(self):
+        frame = np.zeros((120, 160, 3), dtype=np.uint8)
+        resized, scale_x, scale_y = resize_for_inference(frame, 80)
+        self.assertEqual(resized.shape, (60, 80, 3))
+        self.assertEqual(
+            map_box_to_source((10, 5, 30, 25), scale_x, scale_y, 160, 120),
+            (20, 10, 60, 50),
+        )
+        original, x_scale, y_scale = resize_for_inference(frame, 0)
+        self.assertIs(original, frame)
+        self.assertEqual((x_scale, y_scale), (1.0, 1.0))
+
+    def test_detection_resizes_only_inference_and_keeps_source_sized_outputs(self):
+        video_path = self.make_video("resize.mp4", frame_count=6)
+        FakeYOLO.detections = [
+            [(55, [10, 7.5, 40, 45], 3, 0.9)]
+            for _ in range(6)
+        ]
+        run_dir = self.run_with_fake_model(
+            video_path,
+            ["car"],
+            self.root / "resize_runs",
+            max_inference_width=80,
+        )
+        self.assertEqual(set(FakeYOLO.input_shapes), {(60, 80)})
+        analysis = analyze_csv(run_dir / "detections.csv")
+        self.assertEqual(analysis.counts.to_dict("records"), [{"class": "car", "count": 1}])
+        self.assertEqual(analysis.max_inference_width, 80)
+        with (run_dir / "detections.csv").open(encoding="utf-8", newline="") as csv_file:
+            row = next(csv.DictReader(csv_file))
+        snapshot = cv2.imread(str(run_dir / row["snapshot_path"]))
+        self.assertEqual(snapshot.shape[:2], (75, 60))
+        capture = cv2.VideoCapture(str(run_dir / "annotated.mp4"))
+        readable, annotated_frame = capture.read()
+        capture.release()
+        self.assertTrue(readable)
+        self.assertEqual(annotated_frame.shape[:2], (120, 160))
 
     def test_video_over_five_minutes_processes_without_full_frame_retention(self):
         video_path = self.make_video("long.mp4", frame_count=1501)

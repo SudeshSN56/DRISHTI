@@ -15,7 +15,9 @@ from core.config import (
     CLASS_CONFIDENCE_OVERRIDES,
     CONFIDENCE_THRESHOLD,
     DEFAULT_CLASSES,
+    HALF_PRECISION,
     IMAGE_SIZE,
+    MAX_INFERENCE_WIDTH,
     MIN_TRACK_FRAMES,
     MIN_BOX_PX,
     MODEL_NAME,
@@ -78,6 +80,11 @@ def render_analyze(
             ("MIN TRACK LENGTH", f"{MIN_TRACK_FRAMES} frames"),
             ("MIN BOX SIZE", f"{MIN_BOX_PX}px" if MIN_BOX_PX else "Disabled"),
             (
+                "MAX INFERENCE WIDTH",
+                f"{MAX_INFERENCE_WIDTH}px" if MAX_INFERENCE_WIDTH else "Disabled",
+            ),
+            ("HALF PRECISION", "Enabled" if HALF_PRECISION else "Disabled"),
+            (
                 "TRACKER BUFFER",
                 f"{_tracker_buffer()} frames",
             ),
@@ -122,6 +129,14 @@ def render_analyze(
                     temporary_path = Path(temporary_directory) / Path(uploaded_video.name).name
                     temporary_path.write_bytes(uploaded_video.getvalue())
                     with VideoSource(temporary_path) as source:
+                        if source.metadata.width > 2000:
+                            st.markdown(
+                                notice(
+                                    "High-resolution videos take longer to process",
+                                    "warning",
+                                ),
+                                unsafe_allow_html=True,
+                            )
                         if source.metadata.duration_sec > 5 * 60:
                             st.markdown(
                                 notice(
@@ -134,11 +149,12 @@ def render_analyze(
                     def update_progress(processed: int, total: int) -> None:
                         elapsed = time.perf_counter() - started
                         fraction = min(processed / total, 1.0) if total else 0.0
+                        processing_fps = processed / max(elapsed, 1e-6)
                         progress.progress(
                             fraction,
                             text=(
                                 f"Processing frame {processed:,} of {total:,} "
-                                f"· {elapsed:.1f}s elapsed"
+                                f"· {elapsed:.1f}s elapsed · {processing_fps:.2f} FPS"
                             ),
                         )
 

@@ -36,6 +36,8 @@ class AnalysisResult:
     location: str | None = None
     confidence_overrides: str | None = None
     track_buffer: int | None = None
+    max_inference_width: int | None = None
+    half_precision: bool | None = None
 
     @property
     def processing_fps(self) -> float | None:
@@ -228,10 +230,24 @@ def analyze_csv(
         "location": _optional_metadata(detections, "location"),
         "confidence_overrides": _optional_metadata(detections, "confidence_overrides"),
         "track_buffer": _optional_metadata(detections, "track_buffer", numeric=True),
+        "max_inference_width": _optional_metadata(
+            detections,
+            "max_inference_width",
+            numeric=True,
+        ),
+        "half_precision": _optional_metadata(detections, "half_precision"),
     }
-    for field in ("imgsz", "min_track_frames", "min_box_px", "track_buffer"):
+    for field in (
+        "imgsz",
+        "min_track_frames",
+        "min_box_px",
+        "track_buffer",
+        "max_inference_width",
+    ):
         if metadata[field] is not None:
             metadata[field] = int(metadata[field])
+    if metadata["half_precision"] is not None:
+        metadata["half_precision"] = metadata["half_precision"].casefold() == "true"
     return AnalysisResult(
         video_name=video_name,
         video_duration_sec=duration_sec,

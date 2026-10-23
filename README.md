@@ -89,6 +89,21 @@ filter, when enabled, rejects detections whose width **or** height is below
 the configured number of pixels in the source frame. Detection settings are
 visible in Analyze and recorded in each new run's CSV.
 
+Speed controls are optional and disabled by default:
+`MAX_INFERENCE_WIDTH = 0` processes source frames at their original size;
+setting a positive width resizes frames for inference and maps detections back
+to source coordinates. `HALF_PRECISION = False` keeps full precision; enabling
+it requests Ultralytics FP16 inference where supported. These options can
+change predictions and are recorded per run. Processing time includes source
+validation, model loading, inference, and annotated-video encoding, but excludes
+CSV serialization.
+
+Single-run observation on `uav0000137_00458_v.mp4` (2688x1512, 233 frames,
+RTX 4060 Laptop GPU): default full-width inference took 29.96s (7.78 FPS);
+`MAX_INFERENCE_WIDTH = 1280` took 29.26s (7.96 FPS). Unique tracks differed
+(256 versus 204), so this is not an accuracy or performance benchmark and does
+not establish an improved setting. The default remains disabled.
+
 ## How to measure count error
 
 Create a JSON file with your own manually counted class totals keyed by the
@@ -140,9 +155,10 @@ and light modes, an Analyze page, CSV-driven Results, a filterable Run Explorer,
 and per-track Object Dossiers. Results include responsive hand-built SVG class,
 timeline, and class-mix charts; PDF charts continue to use Matplotlib. The CSV
 remains the source of truth, and a PDF is generated only after **Print Brief**.
-CSV processing throughput is not currently written to the CSV, so the UI
-identifies it as not recorded instead of estimating it. The interface uses no
-new runtime dependencies.
+New CSV files record processing throughput inputs and calculate FPS in
+analysis; legacy CSVs show missing provenance as not recorded. High-resolution
+videos receive a processing-time notice. The interface uses no new runtime
+dependencies.
 
 The theme uses IBM Plex Sans and IBM Plex Mono from Google Fonts with system
 font fallbacks when offline. To open the application in a browser, run
