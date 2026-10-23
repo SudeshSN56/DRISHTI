@@ -50,11 +50,10 @@ the current implementation.
 | UI charts | Hand-written responsive SVG strings; no UI chart dependency |
 | Tests | `unittest`, Streamlit `AppTest`, synthetic OpenCV video |
 
-Runtime dependencies are listed in [requirements.txt](requirements.txt):
-`ultralytics`, `lap`, `opencv-python`, `numpy`, `pandas`, `matplotlib`,
-`streamlit`, `fpdf2`, and `imageio-ffmpeg`. PyTorch must be installed
-separately with a CUDA-compatible build; the README setup example uses the
-CUDA 12.8 wheel index. The redesign added no runtime dependencies.
+Runtime dependencies are pinned in [requirements.txt](requirements.txt) to
+versions installed in the working environment. PyTorch and torchvision use
+the CUDA 12.8 wheels and are installed from the official index as documented
+in README.
 
 Central detection settings in [core/config.py](core/config.py):
 
@@ -64,6 +63,12 @@ Central detection settings in [core/config.py](core/config.py):
 | Confidence threshold | `0.35` |
 | Image size | `960` |
 | Minimum track length | `5` frames |
+| Minimum box size | Disabled (`0` pixels) |
+| Per-class confidence overrides | Empty |
+| ByteTrack buffer | `30` frames (project YAML) |
+| Maximum inference width | Disabled (`0`) |
+| Half precision | Disabled |
+| Minimum snapshot size / padding | Disabled (`0` / `0` pixels) |
 | Analysis timeline buckets | `5` seconds |
 | Curated default classes | person, bicycle, car, motorcycle, bus, truck, boat, bird, dog, cat, horse, cow, sheep |
 
@@ -99,7 +104,7 @@ datasets/                    Local datasets (ignored by Git)
 ```
 
 Other project documentation includes [README.md](README.md),
-[PLAN.md](PLAN.md), and the historical [gptluna.md](gptluna.md).
+[PLAN.md](PLAN.md), and the archived [GPT Luna log](docs/archive/gptluna.md).
 
 ## 5. Processing and data flow
 
@@ -187,12 +192,15 @@ system-font fallbacks. If offline, the system fonts remain available.
 
 - KPI strip for unique object count, class count, most common class, busiest
   time window, duration, and processing speed.
-- The existing CSV does not store processing throughput, so processing speed
-  is explicitly displayed as **Not recorded**.
+- New CSVs record run provenance and processing time; Results derives FPS from
+  that CSV. Older runs display absent settings as **Not recorded** and omit the
+  processing-speed KPI.
 - Template summary and approximate-count warning.
 - Hand-written SVG class-count/share bars, five-second timeline histogram with
-  a rounded-top bar path and computed nice axis maximum, and 100% class-mix bar.
-- Annotated video replay and saved snapshot cards linked to object dossiers.
+  a rounded-top bar path and computed nice axis maximum, a visible-objects
+  timeline based on first/last-seen intervals, and a 100% class-mix bar.
+- Annotated video replay and confidence-sorted snapshot cards (24 per page)
+  linked to object dossiers; missing crops have neutral placeholders.
 - Detection parameters/provenance panel.
 - CSV download, on-demand **Print Brief**, and PDF download after creation.
 
@@ -227,6 +235,7 @@ print rules that hide navigation and controls for browser printing.
 The PDF brief is a separate output from browser printing. `core/report.py`
 builds the PDF only when explicitly requested and includes run metadata, a
 unique-track count table, counts and timeline charts, the CSV-derived summary,
+run settings, location when recorded, a class-colour legend, page numbers,
 available snapshots (up to three per class), and a limitations note.
 Matplotlib is used internally for these PDF charts only. Snapshot paths are
 resolved relative to the run directory and rejected if they point outside it.
@@ -238,7 +247,7 @@ From PowerShell at the repository root:
 ```powershell
 py -3.12 -m venv venv
 .\venv\Scripts\python.exe -m pip install --upgrade pip
-.\venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+.\venv\Scripts\python.exe -m pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 --index-url https://download.pytorch.org/whl/cu128
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
@@ -278,8 +287,8 @@ Run the full test suite:
 .\venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-The suite currently contains 15 tests: the existing app and pipeline coverage
-plus six UI helper/filter tests. Coverage includes:
+The suite currently contains 31 tests across app, pipeline, evaluation, and UI
+helpers. Coverage includes:
 
 - Corrupt upload reporting without app failure.
 - Editing the class selection in the UI and passing it to detection.
@@ -288,14 +297,17 @@ plus six UI helper/filter tests. Coverage includes:
 - Corrupt video rejection and invalid preview parameter validation.
 - Long video processing without retaining the full set of frames in memory.
 - Zero-detection CSV analysis and PDF generation.
+- Legacy CSV fallback for missing provenance, configurable detector filters,
+  inference-width box mapping, snapshot padding/minimum-size behavior, and
+  manual-count evaluation maths/CLI output.
 - JPEG sequence ordering, H.264 conversion, and command-line scanning.
-- SVG content and values, sorting/share calculations, nice axis maximum,
-  rounded bar path, deterministic class colors, time formatting, and run
-  filtering/sorting.
+- SVG content and values, new/visible-object timelines, sorting/share
+  calculations, nice axis maximum, rounded bar path, deterministic class
+  colors, time formatting, and run filtering/sorting.
 
-The redesigned application was also started locally and checked through its
-Streamlit health endpoint and browser/AppTest smoke tests. The last recorded
-full-suite run after the UI change reported all 15 tests passing.
+The app has also been started locally and checked through its Streamlit health
+endpoint and AppTest smoke tests. The latest full-suite run reported all 31
+tests passing.
 
 ## 11. Validation and observed performance
 
@@ -316,6 +328,12 @@ synthetic 90-frame, 320 × 240 blank clip completed in 7.47 seconds (12.04 FPS),
 including model initialization and H.264 output. This synthetic result is not
 representative of real footage.
 
+A later single-run comparison on `uav0000137_00458_v.mp4` (2688 × 1512,
+233 frames) recorded 29.96 seconds (7.78 FPS) at the default inference width
+and 29.26 seconds (7.96 FPS) with a 1280-pixel inference width. Tracked totals
+changed from 252 to 204. These are individual observations, not a controlled
+benchmark or accuracy comparison; width resizing remains disabled by default.
+
 Annotated frames and representative crops were visually checked. These
 qualitative checks are not a formal accuracy evaluation. VisDrone categories do
 not fully align with COCO, and trackers can split or merge identities.
@@ -326,8 +344,10 @@ not fully align with COCO, and trackers can split or merge identities.
   IDs or merge different objects. Small or distant objects may be missed.
 - CUDA is required for detection in the current pipeline. A CPU device label
   does not imply CPU inference support.
-- The CSV does not include end-to-end processing time or processing FPS; the
-  Results UI deliberately does not infer a speed metric.
+- Optional inference resizing and FP16 can change predictions; both remain
+  disabled by default.
+- Processing time includes source validation, model loading, inference, and
+  annotated-video encoding, but excludes CSV serialization.
 - Original uploaded videos are temporary and are not kept alongside runs.
 - A missing or corrupt snapshot does not change CSV-derived counts, but its
   image cannot be shown in the UI or PDF.
@@ -353,11 +373,11 @@ Git.
 
 ## 14. Current repository status
 
-The UI redesign is on branch `ui-redesign`. The recent project history includes
-the command-console redesign, project-log updates, and removal of the global
-run/device/model/indexed/UTC status strip at the user's request. The frontend
-currently retains sidebar navigation, the class legend, and the theme toggle.
-Consult `git status` and the remote branch for the latest commit state.
+The current quality and handover changes are on branch `quality-improvements`;
+the known-good console redesign remains on `ui-redesign`. This branch records
+CSV provenance compatibly, supports manual count evaluation and opt-in detector
+controls, adds active-object charts and snapshot/PDF improvements, and refreshes
+handover documentation. Consult `git status` for the local commit state.
 
 ## 15. Future work
 

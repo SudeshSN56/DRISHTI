@@ -151,6 +151,11 @@ def snapshot_crop(
     return frame[top:bottom, left:right]
 
 
+def annotation_dimensions(width: int, height: int) -> tuple[int, int]:
+    """Scale annotation strokes and text with source-frame resolution."""
+    return max(2, round(width / 720)), max(12, round(height / 48))
+
+
 def _write_csv(
     csv_path: Path,
     video_name: str,
@@ -429,10 +434,13 @@ def run_detection(
                                 raise OSError(f"Could not write snapshot: {track.snapshot_path}")
                             track.best_confidence = float(confidence)
 
-                label_scale = min(metadata.width, metadata.height)
+                line_width, font_size = annotation_dimensions(
+                    metadata.width,
+                    metadata.height,
+                )
                 annotated_frame = result.plot(
-                    line_width=max(2.0, label_scale / 720),
-                    font_size=max(12.0, label_scale / 48),
+                    line_width=line_width,
+                    font_size=font_size,
                 )
                 if annotated_frame.shape[:2] != (metadata.height, metadata.width):
                     annotated_frame = cv2.resize(

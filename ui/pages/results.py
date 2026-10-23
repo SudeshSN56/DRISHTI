@@ -159,7 +159,10 @@ def render_results(run_dir: Path) -> None:
             ),
             (
                 "Minimum box size",
-                f"{analysis.min_box_px}px" if analysis.min_box_px is not None else "Not recorded",
+                f"{analysis.min_box_px}px"
+                if analysis.min_box_px
+                else "Disabled"
+                if analysis.min_box_px == 0 else "Not recorded",
             ),
             (
                 "Per-class confidence overrides",
@@ -173,7 +176,8 @@ def render_results(run_dir: Path) -> None:
             (
                 "Maximum inference width",
                 f"{analysis.max_inference_width}px"
-                if analysis.max_inference_width else "Disabled"
+                if analysis.max_inference_width
+                else "Disabled"
                 if analysis.max_inference_width == 0 else "Not recorded",
             ),
             (
@@ -184,7 +188,9 @@ def render_results(run_dir: Path) -> None:
             (
                 "Minimum snapshot size",
                 f"{analysis.min_snapshot_size_px}px"
-                if analysis.min_snapshot_size_px is not None else "Not recorded",
+                if analysis.min_snapshot_size_px
+                else "Disabled"
+                if analysis.min_snapshot_size_px == 0 else "Not recorded",
             ),
             (
                 "Snapshot padding",

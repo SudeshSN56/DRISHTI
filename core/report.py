@@ -198,6 +198,46 @@ def _write_brief(
             if analysis.min_track_frames is not None else None,
         ),
         (
+            "Minimum box size",
+            f"{analysis.min_box_px}px"
+            if analysis.min_box_px
+            else "Disabled"
+            if analysis.min_box_px == 0 else None,
+        ),
+        (
+            "Class confidence overrides",
+            analysis.confidence_overrides,
+        ),
+        (
+            "ByteTrack buffer",
+            f"{analysis.track_buffer} frames"
+            if analysis.track_buffer is not None else None,
+        ),
+        (
+            "Maximum inference width",
+            f"{analysis.max_inference_width}px"
+            if analysis.max_inference_width
+            else "Disabled"
+            if analysis.max_inference_width == 0 else None,
+        ),
+        (
+            "Half precision",
+            "Enabled" if analysis.half_precision else "Disabled"
+            if analysis.half_precision is not None else None,
+        ),
+        (
+            "Minimum snapshot size",
+            f"{analysis.min_snapshot_size_px}px"
+            if analysis.min_snapshot_size_px
+            else "Disabled"
+            if analysis.min_snapshot_size_px == 0 else None,
+        ),
+        (
+            "Snapshot padding",
+            f"{analysis.snapshot_padding_px}px"
+            if analysis.snapshot_padding_px is not None else None,
+        ),
+        (
             "Processing time",
             f"{analysis.processing_seconds:.2f}s"
             if analysis.processing_seconds is not None else None,

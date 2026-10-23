@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 import unittest
 
+from core.report import _class_hex, _class_rgb
 from ui.charts import (
     bar_list,
     bar_path,
@@ -54,6 +55,11 @@ class UIHelperTests(unittest.TestCase):
     def test_class_colors_are_fixed_or_deterministic(self):
         self.assertEqual(class_color("person"), "#fab219")
         self.assertEqual(class_color("unknown"), class_color("unknown"))
+
+    def test_pdf_class_color_conversion_matches_ui_palette(self):
+        self.assertEqual(_class_rgb("person"), (250, 178, 25))
+        self.assertEqual(_class_hex("person"), "#fab219")
+        self.assertTrue(_class_hex("unknown").startswith("#"))
 
     def test_run_filters_and_sorting(self):
         runs = [

@@ -15,9 +15,9 @@
 - **Primary AI/ML Pipeline:**
   - **Detection & Tracking:** Ultralytics YOLO11s (`yolo11s.pt`) + ByteTrack (`lap`) via `core/detector.py`
   - **Class Filter:** Curated COCO classes (`person`, `bicycle`, `car`, `motorcycle`, `bus`, `truck`, `boat`) or user-selected classes
-  - **Analysis Engine:** CSV-first architecture (`core/analysis.py`), deriving track counts, 5-second first-seen timeline buckets, and text summary strictly from `detections.csv`
+  - **Analysis Engine:** CSV-first architecture (`core/analysis.py`), deriving track counts, first-seen/visible-object 5-second timelines, and text summary from `detections.csv`
   - **Frontend UI:** Streamlit app (`app.py`), featuring file upload, live annotated frame preview, live track counts, results visualization, annotated video player, snapshot gallery, and run history navigation
-  - **Reporting:** ReportLab PDF brief generation (`core/report.py`), created on demand via the "Print Brief" button
+  - **Reporting:** fpdf2 PDF brief generation (`core/report.py`), created on demand via the "Print Brief" button
   - **Utilities:** Frame stitcher `tools/frames_to_video.py` converts sequential dataset JPGs into H.264 MP4 clips
 
 ---
@@ -29,16 +29,16 @@
 | `app.py` | Streamlit web frontend; handles file uploads, live inference preview callback, charts, run history, and PDF download |
 | `core/detector.py` | Core video processing pipeline using CUDA YOLO + ByteTrack, snapshots generation, and CSV logging |
 | `core/analysis.py` | Independent CSV analyzer; generates unique counts, timelines, and template summary without needing video files |
-| `core/report.py` | PDF brief compiler using ReportLab; triggered only on user action ("Print Brief") |
+| `core/report.py` | PDF brief compiler using fpdf2; triggered only on user action ("Print Brief") |
 | `core/video_source.py` | OpenCV video reader/context manager with metadata validation and error handling |
 | `core/config.py` | Central configuration (confidence thresholds, image dimensions, track lengths, output directories) |
 | `tools/frames_to_video.py` | CLI tool to stitch sequence frame folders (e.g., VisDrone) into H.264 MP4 videos |
-| `tests/` | Automated test suite (9 unit & integration tests covering pipeline, conversion, analysis, and UI) |
+| `tests/` | Automated test suite (currently 31 app, pipeline, evaluation, and UI tests) |
 | `test_videos/` | Local test clips (git-ignored, contains stitched VisDrone clips: `uav0000137_00458_v.mp4`, `uav0000305_00000_v.mp4`, `uav0000339_00001_v.mp4`) |
 | `datasets/` | Ignored dataset storage (`VisDrone2019-VID-val`) |
 | `outputs/` | Timestamped run directories (`run_*`), each containing `detections.csv`, `annotated.mp4`, `snapshots/`, and optional `brief.pdf` |
 | `PLAN.md` | Product scope and phase-by-phase implementation specifications (Phases 0–6) |
-| `gptluna.md` | Historical progress and validation log from earlier GPT Luna sessions |
+| `docs/archive/gptluna.md` | Historical progress and validation log from earlier GPT Luna sessions |
 | `memory.md` | **Active shared multi-agent memory file (this file)** |
 
 ---
@@ -51,7 +51,7 @@
 - [x] **Phase 2 — CSV Analysis:** `analyze_csv` fully functional, handles normal and `__none__` zero-detection outputs.
 - [x] **Phase 3 — UI:** Streamlit frontend built and tested; features live preview, counts, plots, downloads, and historical run browsing.
 - [x] **Phase 4 — Print Brief:** PDF brief generator built; compiles statistics, summary, and detection crops into a single document.
-- [x] **Phase 5 — Automated Tests:** 9 automated tests passing (`tests/test_*.py`).
+- [x] **Phase 5 — Automated Tests:** 31 automated tests passing (`tests/test_*.py`).
 - [x] **Phase 6 — Demo & Clean-start verification:** Full rehearsal verified; server run and stop tested.
 
 ---
@@ -63,7 +63,7 @@
   - Initial scaffolding, core architecture (`detector`, `analysis`, `report`, `video_source`).
   - Added `tools/frames_to_video.py` and stitched 3 VisDrone sequences into `test_videos/`.
   - Added live preview callback to `core/detector.py` and connected it to `app.py`.
-  - Authored `PLAN.md` and `gptluna.md`.
+  - Authored `PLAN.md` and the now-archived `docs/archive/gptluna.md`.
 - **Status:** Handed off.
 
 ### Agent: Antigravity (Google DeepMind)
@@ -87,21 +87,21 @@
 
 ---
 
-## 5. Current Focus & Immediate Next Steps (For the Next Agent)
+## 5. Current Focus & Immediate Next Steps
 
-1. **GitHub Remote Publishing:**
-   - Git commits for Phases 0–6 exist locally on branch `main`.
-   - `gh auth login` was initiated previously. Once authenticated, create the private GitHub repository and push `main`.
-
-2. **Terminal Recovery (Cline blocker):**
-   - The integrated terminal is currently unresponsive (commands hang). Restart the terminal/VS Code or kill the stuck process, then re-run `.\venv\Scripts\python.exe -m pytest -q` and `gh auth status` to confirm.
-   - Once terminal works, proceed with GitHub publishing and footage validation below.
-
-3. **Real Footage Validation & Edge Cases:**
-   - Sample and inspect annotated output videos and snapshots generated from `test_videos/`.
-   - Test with high-altitude clips or longer (3–5 min) stress footage if supplied by the user.
-   - Profile memory usage during extended 1080p/4K video processing.
-4. **Frontend / UX Enhancements:**
-   - Start the Streamlit app when requested (`.\venv\Scripts\python.exe -m streamlit run app.py`).
-   - Any new user-requested features or UI tweaks.
-
+- Current work branch: `quality-improvements`; `ui-redesign` remains the stable
+  UI checkpoint.
+- Provenance, configurable filter defaults, manual-count evaluation, opt-in
+  inference resizing/FP16, CSV-derived visible-object charts, snapshot options,
+  and PDF settings/legend/page numbering have been implemented and committed
+  in small steps. The 2688 × 1512 single-run comparison is recorded in
+  `PLAN.md` and `README.md`; inference resizing stays disabled because counts
+  differed.
+- Latest full test run: 31 passing. PDF text/layout was inspected for one
+  class, twelve classes, and zero detections.
+- Streamlit health endpoint returned HTTP 200, and AppTest rendered the real
+  Results run with 252 unique tracks and 9.20 FPS.
+- A fresh real-clip CSV and four-page PDF were written under ignored `outputs/`;
+  PDF text confirmed model, settings, legend, and page number.
+- Handover check is complete; leave the branch local unless the user requests
+  a push.

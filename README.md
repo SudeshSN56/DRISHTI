@@ -4,12 +4,36 @@ A local Streamlit application for analyzing recorded drone video with a
 pretrained Ultralytics YOLO model. The project targets Windows 11 and Python
 3.12.
 
+## Quick start
+
+1. Create a Python 3.12 environment and install the CUDA-enabled PyTorch build:
+
+   ```powershell
+   py -3.12 -m venv venv
+   .\venv\Scripts\python.exe -m pip install --upgrade pip
+   .\venv\Scripts\python.exe -m pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+   .\venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+
+2. Start DRISHTI:
+
+   ```powershell
+   .\venv\Scripts\python.exe -m streamlit run app.py
+   ```
+
+3. Demo flow: upload a clip, choose classes, select **Run**, review Results,
+   download the CSV, and use **Print Brief** when a PDF is needed.
+
+Known limitations: detections can miss small/high-altitude objects, unique
+tracked-ID counts are approximate, tracking may split or merge IDs, and
+inference requires CUDA. Do not treat counts as accuracy measurements.
+
 ## Phase 0: setup
 
 ```powershell
 py -3.12 -m venv venv
 .\venv\Scripts\python.exe -m pip install --upgrade pip
-.\venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+.\venv\Scripts\python.exe -m pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 --index-url https://download.pytorch.org/whl/cu128
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
@@ -109,8 +133,10 @@ CSV serialization.
 Single-run observation on `uav0000137_00458_v.mp4` (2688x1512, 233 frames,
 RTX 4060 Laptop GPU): default full-width inference took 29.96s (7.78 FPS);
 `MAX_INFERENCE_WIDTH = 1280` took 29.26s (7.96 FPS). Unique tracks differed
-(256 versus 204), so this is not an accuracy or performance benchmark and does
+(252 versus 204), so this is not an accuracy or performance benchmark and does
 not establish an improved setting. The default remains disabled.
+A separate default-width validation run completed in 25.33s (9.20 FPS) and
+returned 252 unique tracks; timing varies between single runs.
 
 ## How to measure count error
 

@@ -120,4 +120,10 @@ def render_sidebar(
         unsafe_allow_html=True,
     )
     st.sidebar.caption("Annotated video boxes are labelled with class and track ID.")
+    with st.sidebar.expander("Known limitations"):
+        st.markdown(
+            "- Small objects at altitude may be missed.\n"
+            "- Counts are approximate; track IDs can split or merge.\n"
+            "- Detection requires a CUDA-capable PyTorch setup."
+        )
     return page

@@ -12,6 +12,7 @@ import pandas as pd
 
 from core.analysis import _build_visible_timeline, analyze_csv
 from core.detector import (
+    annotation_dimensions,
     map_box_to_source,
     resize_for_inference,
     run_detection,
@@ -182,7 +183,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(rows[0]["track_buffer"], "30")
         self.assertEqual(rows[0]["min_snapshot_size_px"], "0")
         self.assertEqual(rows[0]["snapshot_padding_px"], "0")
-        self.assertEqual(FakeYOLO.plot_kwargs[0], {"line_width": 2.0, "font_size": 12.0})
+        self.assertEqual(FakeYOLO.plot_kwargs[0], {"line_width": 2, "font_size": 12})
         snapshot = cv2.imread(str(run_dir / rows[0]["snapshot_path"]))
         self.assertIsNotNone(snapshot)
         capture = cv2.VideoCapture(str(video_path))
@@ -403,6 +404,22 @@ class PipelineTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             snapshot_crop(frame, (0, 0, 4, 3), padding_px=-1)
+
+    def test_annotation_dimensions_scale_for_1080p_and_2688px_video(self):
+        self.assertEqual(annotation_dimensions(1920, 1080), (3, 22))
+        self.assertEqual(annotation_dimensions(2688, 1512), (4, 32))
+
+    def test_half_precision_uses_installed_ultralytics_quantize_argument(self):
+        video_path = self.make_video("half-precision.mp4", frame_count=6)
+        FakeYOLO.detections = [[] for _ in range(6)]
+        run_dir = self.run_with_fake_model(
+            video_path,
+            ["car"],
+            self.root / "half_precision_runs",
+            half_precision=True,
+        )
+        self.assertTrue(all(call["quantize"] == 16 for call in FakeYOLO.track_kwargs))
+        self.assertTrue(analyze_csv(run_dir / "detections.csv").half_precision)
 
     def test_snapshot_padding_and_minimum_size_are_recorded(self):
         video_path = self.make_video("snapshot-options.mp4", frame_count=6)
