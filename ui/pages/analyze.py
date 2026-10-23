@@ -25,7 +25,6 @@ from ui.components import notice, panel, swatch
 def render_analyze(
     class_names: tuple[str, ...],
     render_results: Callable[[Path], None],
-    update_topbar: Callable[[str], None],
 ) -> None:
     st.title("Analyze")
     st.caption("Configure a recorded video run. Results are indexed from its detections.csv.")
@@ -94,10 +93,8 @@ def render_analyze(
             st.error("Select at least one object class before starting detection.")
         else:
             started = time.perf_counter()
-            st.session_state["run_status"] = "processing"
             st.session_state["live_preview"] = None
             st.session_state["live_counts"] = {}
-            update_topbar("processing")
             progress = st.progress(0, text="Preparing video · 0.0s elapsed")
             live_frame, live_table = st.columns([3, 1])
             frame_slot = live_frame.empty()
@@ -157,17 +154,13 @@ def render_analyze(
                         preview_callback=update_preview,
                     )
                 st.session_state["selected_run_dir"] = str(run_dir)
-                st.session_state["run_status"] = "done"
                 progress.progress(
                     1.0,
                     text=f"Processing complete · {time.perf_counter() - started:.1f}s elapsed",
                 )
                 st.success("Video processing completed.")
-                update_topbar("done")
             except (VideoSourceError, ValueError, RuntimeError, OSError) as error:
-                st.session_state["run_status"] = "idle"
                 progress.empty()
-                update_topbar("idle")
                 st.error(f"Could not process this video: {error}")
 
     preview = st.session_state.get("live_preview")

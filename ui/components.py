@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import html
-from datetime import datetime, timezone
 from typing import Iterable
 
 import streamlit as st
@@ -91,30 +90,6 @@ def object_card(
         f'<div class="object-meta">FIRST SEEN {html.escape(first_seen)}<br>'
         f'AVG CONFIDENCE {html.escape(confidence)}</div></div>'
     )
-
-
-def render_topbar(
-    run_status: str,
-    device_label: str,
-    model_ready: bool,
-    run_count: int,
-) -> str:
-    status = run_status if run_status in {"idle", "processing", "done"} else "idle"
-    status_text = {"idle": "IDLE", "processing": "PROCESSING", "done": "DONE"}[status]
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
-    topbar = (
-        '<div class="console-topbar">'
-        '<div><div class="console-brand">DRISHTI</div>'
-        '<div class="console-subtitle">COMMAND &amp; INTELLIGENCE CONSOLE</div></div>'
-        f'<div class="console-item"><span class="status-dot {status}"></span>RUN '
-        f'<span class="console-value">{status_text}</span></div>'
-        f'<div class="console-item">DEVICE <span class="console-value">{html.escape(device_label)}</span></div>'
-        f'<div class="console-item">MODEL <span class="console-value">{"READY" if model_ready else "MISSING"}</span></div>'
-        f'<div class="console-item">INDEXED <span class="console-value">{run_count}</span></div>'
-        f'<div class="console-item"><span class="console-value">{timestamp}</span> UTC</div>'
-        "</div>"
-    )
-    return topbar
 
 
 def render_sidebar(

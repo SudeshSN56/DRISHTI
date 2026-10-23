@@ -131,18 +131,9 @@ input[type="radio"], input[type="checkbox"] {{ accent-color:var(--accent); }}
 [data-testid="stDataFrame"], [data-testid="stTable"] {{
   border:1px solid var(--line); background:var(--panel);
 }}
-.console-topbar {{
-  display:flex; align-items:center; gap:18px; flex-wrap:wrap;
-  padding:12px 16px; margin-bottom:18px; background:var(--panel);
-  border:1px solid var(--line); border-radius:3px;
-}}
 .console-brand {{ color:var(--text); font-weight:700; letter-spacing:.08em; }}
 .console-subtitle {{ color:var(--muted); font-size:.76rem; }}
-.console-item {{ display:flex; align-items:center; gap:7px; color:var(--text-2); font-size:.76rem; }}
 .console-value {{ color:var(--text); font-family:"IBM Plex Mono",monospace; font-size:.74rem; }}
-.status-dot {{ width:7px; height:7px; border-radius:50%; display:inline-block; background:var(--muted); }}
-.status-dot.processing {{ background:var(--warn); }}
-.status-dot.done {{ background:var(--ok); }}
 .console-panel {{
   padding:16px; background:var(--panel); border:1px solid var(--line);
   border-radius:3px; margin:0 0 14px;
@@ -163,7 +154,7 @@ input[type="radio"], input[type="checkbox"] {{ accent-color:var(--accent); }}
 .object-meta {{ color:var(--muted); font: .72rem "IBM Plex Mono",monospace; line-height:1.8; }}
 @media print {{
   [data-testid="stSidebar"], [data-testid="stHeader"], footer,
-  .console-topbar, .no-print, button, [data-testid="stDownloadButton"] {{ display:none !important; }}
+  .no-print, button, [data-testid="stDownloadButton"] {{ display:none !important; }}
   html, body, [data-testid="stAppViewContainer"] {{ background:#fff !important; color:#111 !important; }}
   .block-container {{ max-width:none !important; padding:0 !important; }}
   .console-panel {{ break-inside:avoid; border-color:#bbb !important; }}

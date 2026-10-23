@@ -3,11 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import streamlit as st
-import torch
 from ultralytics import YOLO
 
-from core.config import DEFAULT_CLASSES, MODEL_NAME, OUTPUTS_DIR, PROJECT_ROOT
-from ui.components import render_sidebar, render_topbar
+from core.config import DEFAULT_CLASSES, MODEL_NAME, OUTPUTS_DIR
+from ui.components import render_sidebar
 from ui.data import available_runs
 from ui.pages.analyze import render_analyze
 from ui.pages.dossier import render_dossier
@@ -20,12 +19,6 @@ from ui.theme import inject_theme
 def get_class_names(model_name: str) -> tuple[str, ...]:
     model = YOLO(model_name)
     return tuple(sorted(model.names.values()))
-
-
-def _device_label() -> str:
-    if torch.cuda.is_available():
-        return f"CUDA / {torch.cuda.get_device_name(0)}"
-    return "CPU"
 
 
 def main() -> None:
@@ -49,26 +42,11 @@ def main() -> None:
         class_names,
         ("Analyze", "Results", "Run Explorer", "Object Dossier"),
     )
-    topbar_column, theme_column = st.columns([8, 1])
-    topbar_placeholder = topbar_column.empty()
-    device_label = _device_label()
-    model_ready = (PROJECT_ROOT / MODEL_NAME).is_file()
-
-    def update_topbar(status: str | None = None) -> None:
-        current_status = status or st.session_state.get("run_status", "idle")
-        topbar_placeholder.markdown(
-            render_topbar(
-                current_status,
-                device_label,
-                model_ready,
-                len(available_runs(OUTPUTS_DIR)),
-            ),
-            unsafe_allow_html=True,
-        )
-
-    update_topbar()
-    with theme_column:
-        st.toggle("Light theme", key="light_theme", help="Switch between graphite dark and light chrome.")
+    st.toggle(
+        "Light theme",
+        key="light_theme",
+        help="Switch between graphite dark and light chrome.",
+    )
 
     if model_error is not None:
         st.error(f"Could not load the YOLO model class list: {model_error}")
@@ -81,7 +59,7 @@ def main() -> None:
 
     if active_page == "Analyze":
         if model_error is None:
-            render_analyze(class_names, render_results, update_topbar)
+            render_analyze(class_names, render_results)
     elif active_page == "Results":
         if not run_dirs:
             st.info("No indexed runs yet. Analyze a video to create a results CSV.")

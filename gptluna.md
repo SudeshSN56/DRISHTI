@@ -303,6 +303,10 @@ plan is being followed phase by phase.
   dependency was changed. Print Brief remains generated only on request.
 - The app is currently running at `http://localhost:8501`; its health endpoint
   returned HTTP 200 during this session.
+- Removed the global run/device/model/indexed-runs/UTC status strip from the
+  frontend while keeping sidebar navigation and the theme toggle. AppTest
+  verified the strip is absent, and the running app health endpoint remains
+  HTTP 200.
 - The user requested publishing the work to GitHub. `origin` is
   `https://github.com/SudeshSN56/DRISHTI.git`, but `gh auth status` reports
   that no GitHub host is authenticated. The redesign commit is local on
