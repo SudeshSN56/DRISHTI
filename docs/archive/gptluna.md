@@ -311,3 +311,12 @@ plan is being followed phase by phase.
   `https://github.com/SudeshSN56/DRISHTI.git`, but `gh auth status` reports
   that no GitHub host is authenticated. The redesign commit is local on
   `ui-redesign`; push requires GitHub authentication.
+
+## Final validation and handover — 23 October 2026
+
+- Verified the repository is clean on the `quality-improvements` branch and no sensitive tokens or personal absolute paths were found during a repo scan.
+- Confirmed the direct dependency set is pinned in `requirements.txt` to the versions actually used in the validated environment: Streamlit 1.66.0, Ultralytics 8.4.183, PyTorch 2.11.0+cu128, torchvision 0.26.0+cu128, OpenCV 5.0.0.93, pandas 3.0.6, fpdf2 2.8.9, PyYAML 6.0.3, Pillow 12.3.0, and Matplotlib 3.11.2.
+- Added the final documentation handover updates, including the README quick start, limitation notes, archived project log, and the final project report summary.
+- Ran the repository test suite with the project venv and confirmed the app boots successfully: `python -m unittest discover -s tests -v` passed with 31 tests, and the local Streamlit app served successfully on `http://localhost:8501`.
+- The app remained in the Streamlit-based design with the graphite console styling, CSV-first results flow, provenance compatibility, evaluation tooling, and PDF/report improvements. The stable redesign remains on the `ui-redesign` branch; quality improvements are recorded on `quality-improvements`.
+- No new feature work was added beyond the approved no-feature-creep quality and handover scope. The repo is ready for a final handoff or remote publication.
