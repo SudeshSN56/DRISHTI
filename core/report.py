@@ -1,3 +1,5 @@
+import colorsys
+import re
 from io import BytesIO
 from pathlib import Path
 
@@ -7,6 +9,7 @@ from fpdf import FPDF
 from PIL import Image
 
 from core.analysis import AnalysisResult, analyze_csv
+from ui.components import class_color
 
 
 matplotlib.use("Agg")
@@ -16,6 +19,26 @@ from matplotlib.figure import Figure
 
 
 SNAPSHOTS_PER_CLASS = 3
+
+
+class _BriefPDF(FPDF):
+    def footer(self) -> None:
+        self.set_y(-12)
+        self.set_font("DejaVu", size=8)
+        self.set_text_color(110, 113, 119)
+        self.cell(0, 8, f"Page {self.page_no()}/{{nb}}", align="R")
+
+
+def _class_rgb(class_name: str) -> tuple[int, int, int]:
+    color = class_color(class_name)
+    if color.startswith("#"):
+        return tuple(int(color[index : index + 2], 16) for index in (1, 3, 5))
+    match = re.fullmatch(r"hsl\((\d+) 58% 62%\)", color)
+    if not match:
+        raise ValueError(f"Unsupported class color format for {class_name!r}: {color}")
+    hue = int(match.group(1)) / 360
+    red, green, blue = colorsys.hls_to_rgb(hue, 0.62, 0.58)
+    return round(red * 255), round(green * 255), round(blue * 255)
 
 
 def _paragraph(pdf: FPDF, height: float, text: str) -> None:
@@ -45,7 +68,11 @@ def _chart_image(counts: pd.DataFrame, timeline: pd.DataFrame, chart_type: str) 
             axis.set_axis_off()
         else:
             ordered_counts = counts.sort_values("count", ascending=True)
-            axis.barh(ordered_counts["class"], ordered_counts["count"], color="#2563eb")
+            axis.barh(
+                ordered_counts["class"],
+                ordered_counts["count"],
+                color=[_class_hex(name) for name in ordered_counts["class"]],
+            )
             axis.set_xlabel("Unique tracked objects")
             axis.set_title("Objects by class")
             axis.grid(axis="x", alpha=0.2)
@@ -59,10 +86,16 @@ def _chart_image(counts: pd.DataFrame, timeline: pd.DataFrame, chart_type: str) 
                     f"{int(start // 60)}:{int(start % 60):02d}"
                     for start in class_timeline["bucket_start_sec"]
                 ]
-                axis.plot(labels, class_timeline["count"], marker="o", label=class_name)
+                axis.plot(
+                    labels,
+                    class_timeline["count"],
+                    marker="o",
+                    label=class_name,
+                    color=_class_hex(class_name),
+                )
             axis.set_xlabel("First-seen time window")
             axis.set_ylabel("Unique objects")
-            axis.set_title("First-seen timeline")
+            axis.set_title("New objects first seen per 5-second window")
             axis.grid(alpha=0.2)
             if timeline["class"].nunique() > 1:
                 axis.legend(loc="best")
@@ -72,6 +105,10 @@ def _chart_image(counts: pd.DataFrame, timeline: pd.DataFrame, chart_type: str) 
     canvas.print_png(image)
     image.seek(0)
     return image
+
+
+def _class_hex(class_name: str) -> str:
+    return "#" + "".join(f"{component:02x}" for component in _class_rgb(class_name))
 
 
 def _snapshot_paths(csv_path: Path) -> tuple[dict[str, list[Path]], int]:
@@ -126,8 +163,9 @@ def _write_brief(
     snapshots: dict[str, list[Path]],
     missing_snapshots: int,
 ) -> None:
-    pdf = FPDF()
+    pdf = _BriefPDF()
     pdf.set_auto_page_break(auto=True, margin=16)
+    pdf.alias_nb_pages()
     pdf.add_font(
         "DejaVu",
         "",
@@ -143,6 +181,53 @@ def _write_brief(
     _paragraph(pdf, 6, f"Duration: {_format_duration(analysis.video_duration_sec)}")
     _paragraph(pdf, 6, f"Processed: {analysis.processed_at}")
     pdf.ln(4)
+
+    pdf.set_font("DejaVu", size=13)
+    pdf.cell(0, 9, "Run settings", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("DejaVu", size=9)
+    run_settings = (
+        ("Model", analysis.model),
+        (
+            "Confidence",
+            f"{analysis.confidence:.2f}" if analysis.confidence is not None else None,
+        ),
+        ("Image size", f"{analysis.imgsz}px" if analysis.imgsz is not None else None),
+        (
+            "Minimum track length",
+            f"{analysis.min_track_frames} frames"
+            if analysis.min_track_frames is not None else None,
+        ),
+        (
+            "Processing time",
+            f"{analysis.processing_seconds:.2f}s"
+            if analysis.processing_seconds is not None else None,
+        ),
+        ("Device", analysis.device),
+        ("Location", analysis.location),
+    )
+    for label, value in run_settings:
+        _paragraph(pdf, 5, f"{label}: {value or 'Not recorded'}")
+    pdf.ln(2)
+
+    pdf.set_font("DejaVu", size=13)
+    pdf.cell(0, 9, "Class colour legend", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("DejaVu", size=8)
+    classes = analysis.counts["class"].astype(str).tolist()
+    for index, class_name in enumerate(classes):
+        column = index % 3
+        if column == 0:
+            if pdf.will_page_break(7):
+                pdf.add_page()
+            row_y = pdf.get_y()
+        x = pdf.l_margin + column * 62
+        pdf.set_fill_color(*_class_rgb(class_name))
+        pdf.rect(x, row_y + 1.5, 3.5, 3.5, style="F")
+        pdf.set_xy(x + 5, row_y)
+        pdf.cell(55, 7, class_name)
+        if column == 2 or index == len(classes) - 1:
+            pdf.set_y(row_y + 7)
+    if classes:
+        pdf.ln(2)
 
     pdf.set_font("DejaVu", size=13)
     pdf.cell(0, 9, "Unique tracked object counts", new_x="LMARGIN", new_y="NEXT")

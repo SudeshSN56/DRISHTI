@@ -176,8 +176,9 @@ font fallbacks when offline. To open the application in a browser, run
 
 Select any run with a `detections.csv`, then click **Print Brief** to create
 `brief.pdf` in that run folder. Metadata, counts, charts, and summary are built
-from the selected CSV; available snapshots are included. The PDF is created
-only when the user clicks the button.
+from the selected CSV; available snapshots are included. The brief includes
+run settings, a class-colour legend, and page numbers; legacy fields display
+`Not recorded`. The PDF is created only when the user clicks the button.
 
 ## Phase 5: automated checks and current test coverage
 

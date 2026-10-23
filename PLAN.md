@@ -83,3 +83,8 @@ than the configured width/height threshold. The Results gallery sorts by
 average confidence and displays 24 items per page with placeholders for missing
 crops; dossier Prev/Next follows the selected gallery order. Annotation line
 and font sizes now scale with source resolution.
+
+PDF briefs include CSV-derived run settings, location when recorded, the shared
+class-colour legend, class-coloured plots, and page numbering. Manual extraction
+checks passed for one class, twelve classes, and zero detections; each produced
+a readable two-page PDF with the expected fallback/settings text and footer.
