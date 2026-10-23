@@ -9,7 +9,7 @@ from core.analysis import analyze_csv
 from core.report import build_brief
 from ui.charts import bar_list, histogram, stacked_bar, visible_objects_histogram
 from ui.components import notice, object_card
-from ui.data import ObjectInfo, read_objects
+from ui.data import ObjectInfo, read_objects, sort_objects_by_confidence
 
 
 def _time_label(seconds: float) -> str:
@@ -182,6 +182,16 @@ def render_results(run_dir: Path) -> None:
                 if analysis.half_precision is not None else "Not recorded",
             ),
             (
+                "Minimum snapshot size",
+                f"{analysis.min_snapshot_size_px}px"
+                if analysis.min_snapshot_size_px is not None else "Not recorded",
+            ),
+            (
+                "Snapshot padding",
+                f"{analysis.snapshot_padding_px}px"
+                if analysis.snapshot_padding_px is not None else "Not recorded",
+            ),
+            (
                 "Processing time",
                 f"{analysis.processing_seconds:.2f}s"
                 if analysis.processing_seconds is not None else "Not recorded",
@@ -211,13 +221,22 @@ def render_results(run_dir: Path) -> None:
     if not objects:
         st.caption("No saved objects or snapshots are available for this run.")
     else:
+        objects = sort_objects_by_confidence(objects)
+        st.caption("Sorted by average confidence, highest first.")
+        limit_key = f"snapshot_limit_{run_dir.name}"
+        st.session_state.setdefault(limit_key, 24)
+        visible_objects = objects[: st.session_state[limit_key]]
         cards = st.columns(4)
-        for index, item in enumerate(objects):
+        for index, item in enumerate(visible_objects):
             with cards[index % len(cards)]:
-                snapshot_html = ""
                 if item.snapshot_path:
                     st.image(str(item.snapshot_path), width="stretch")
-                    snapshot_html = ""
+                else:
+                    st.markdown(
+                        '<div class="console-panel" style="height:150px;display:grid;'
+                        'place-items:center;color:var(--muted)">Snapshot unavailable</div>',
+                        unsafe_allow_html=True,
+                    )
                 confidence = (
                     f"{item.avg_confidence:.3f}"
                     if item.avg_confidence is not None
@@ -229,7 +248,6 @@ def render_results(run_dir: Path) -> None:
                         item.track_id,
                         _time_label(item.first_seen_sec),
                         confidence,
-                        snapshot_html,
                     ),
                     unsafe_allow_html=True,
                 )
@@ -240,6 +258,13 @@ def render_results(run_dir: Path) -> None:
                     on_click=_open_dossier,
                     args=(item, objects, run_dir),
                 )
+        if len(objects) > len(visible_objects):
+            st.button(
+                "Load more snapshots",
+                key=f"load_more_snapshots_{run_dir.name}",
+                on_click=_load_more_snapshots,
+                args=(limit_key,),
+            )
 
     actions = st.columns(3)
     with actions[0]:
@@ -279,3 +304,7 @@ def _open_dossier(item: ObjectInfo, objects: list[ObjectInfo], run_dir: Path) ->
     ]
     st.session_state["dossier_object_key"] = (item.class_name, item.track_id)
     st.session_state["active_page"] = "Object Dossier"
+
+
+def _load_more_snapshots(limit_key: str) -> None:
+    st.session_state[limit_key] += 24

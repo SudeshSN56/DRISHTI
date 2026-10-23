@@ -107,6 +107,18 @@ def read_objects(csv_path: Path) -> list[ObjectInfo]:
     return sorted(objects, key=lambda item: (item.first_seen_sec, item.class_name, item.track_id))
 
 
+def sort_objects_by_confidence(objects: list[ObjectInfo]) -> list[ObjectInfo]:
+    return sorted(
+        objects,
+        key=lambda item: (
+            item.avg_confidence is None,
+            -(item.avg_confidence if item.avg_confidence is not None else 0),
+            item.class_name.casefold(),
+            item.track_id,
+        ),
+    )
+
+
 def filter_runs(
     runs: list[RunInfo],
     *,

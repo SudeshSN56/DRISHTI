@@ -32,11 +32,33 @@ def render_dossier(selected_run: Path | None) -> None:
     order = st.session_state.get("dossier_objects")
     if not order:
         order = [(item.class_name, item.track_id) for item in objects]
-    indexed = {(item.class_name, item.track_id): index for index, item in enumerate(objects)}
+    objects_by_key = {
+        (item.class_name, item.track_id): item
+        for item in objects
+    }
+    ordered_objects = [
+        objects_by_key[key]
+        for key in order
+        if key in objects_by_key
+    ]
+    seen = {(item.class_name, item.track_id) for item in ordered_objects}
+    ordered_objects.extend(
+        item
+        for item in objects
+        if (item.class_name, item.track_id) not in seen
+    )
+    indexed = {
+        (item.class_name, item.track_id): index
+        for index, item in enumerate(ordered_objects)
+    }
     if requested not in indexed:
-        requested = order[0] if order and order[0] in indexed else next(iter(indexed))
+        requested = (
+            (ordered_objects[0].class_name, ordered_objects[0].track_id)
+            if ordered_objects
+            else next(iter(indexed))
+        )
     object_index = indexed[requested]
-    current = objects[object_index]
+    current = ordered_objects[object_index]
 
     controls = st.columns([1, 5, 1])
     with controls[0]:
@@ -45,20 +67,24 @@ def render_dossier(selected_run: Path | None) -> None:
             disabled=object_index == 0,
             key="dossier_prev",
             on_click=_select_object,
-            args=(objects[max(0, object_index - 1)], run_dir, order),
+            args=(ordered_objects[max(0, object_index - 1)], run_dir, order),
         )
     with controls[1]:
         st.caption(
-            f"OBJECT {object_index + 1} / {len(objects)} · "
+            f"OBJECT {object_index + 1} / {len(ordered_objects)} · "
             f"RUN {run_dir.name}"
         )
     with controls[2]:
         st.button(
             "Next",
-            disabled=object_index == len(objects) - 1,
+            disabled=object_index == len(ordered_objects) - 1,
             key="dossier_next",
             on_click=_select_object,
-            args=(objects[min(len(objects) - 1, object_index + 1)], run_dir, order),
+            args=(
+                ordered_objects[min(len(ordered_objects) - 1, object_index + 1)],
+                run_dir,
+                order,
+            ),
         )
 
     image_column, detail_column = st.columns([1.25, 1])
@@ -113,6 +139,12 @@ def render_dossier(selected_run: Path | None) -> None:
             with columns[index % len(columns)]:
                 if item.snapshot_path:
                     st.image(str(item.snapshot_path), width="stretch")
+                else:
+                    st.markdown(
+                        '<div class="console-panel" style="height:100px;display:grid;'
+                        'place-items:center;color:var(--muted)">Snapshot unavailable</div>',
+                        unsafe_allow_html=True,
+                    )
                 st.caption(f"{current.class_name} · ID {item.track_id} · {_time_label(item.first_seen_sec)}")
                 st.button(
                     "Open",

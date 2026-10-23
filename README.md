@@ -89,6 +89,14 @@ filter, when enabled, rejects detections whose width **or** height is below
 the configured number of pixels in the source frame. Detection settings are
 visible in Analyze and recorded in each new run's CSV.
 
+Snapshot output is also configurable without changing its current default:
+`MIN_SNAPSHOT_SIZE_PX = 0` keeps all positive-size crops, and
+`SNAPSHOT_PADDING_PX = 0` adds no border. When enabled, the minimum is applied
+to both crop width and height before padding; padding is clamped to source-frame
+bounds. A track retains its highest-confidence eligible crop. Results show
+available snapshots first by average track confidence and load them in pages of
+24; unavailable crops use a neutral placeholder.
+
 Speed controls are optional and disabled by default:
 `MAX_INFERENCE_WIDTH = 0` processes source frames at their original size;
 setting a positive width resizes frames for inference and maps detections back

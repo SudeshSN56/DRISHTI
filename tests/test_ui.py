@@ -11,7 +11,7 @@ from ui.charts import (
     visible_objects_histogram,
 )
 from ui.components import class_color
-from ui.data import RunInfo, filter_runs
+from ui.data import ObjectInfo, RunInfo, filter_runs, sort_objects_by_confidence
 from ui.pages.results import _time_label
 
 
@@ -74,6 +74,17 @@ class UIHelperTests(unittest.TestCase):
         self.assertEqual(longest[0].video_name, "crowd.mp4")
         newest = filter_runs(runs)
         self.assertEqual(newest[0].video_name, "traffic-night.mp4")
+
+    def test_snapshots_sort_by_average_confidence_with_missing_values_last(self):
+        items = [
+            ObjectInfo("1", "car", 0, 1, 0.4, None),
+            ObjectInfo("2", "person", 0, 1, None, None),
+            ObjectInfo("3", "truck", 0, 1, 0.9, None),
+        ]
+        self.assertEqual(
+            [item.track_id for item in sort_objects_by_confidence(items)],
+            ["3", "1", "2"],
+        )
 
 
 if __name__ == "__main__":

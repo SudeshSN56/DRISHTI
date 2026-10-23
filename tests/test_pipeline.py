@@ -11,7 +11,12 @@ import numpy as np
 import pandas as pd
 
 from core.analysis import _build_visible_timeline, analyze_csv
-from core.detector import map_box_to_source, resize_for_inference, run_detection
+from core.detector import (
+    map_box_to_source,
+    resize_for_inference,
+    run_detection,
+    snapshot_crop,
+)
 from core.report import build_brief
 from core.video_source import VideoSource, VideoSourceError
 from tools.frames_to_video import stitch_sequence
@@ -44,7 +49,8 @@ class FakeResult:
         self.boxes = FakeBoxes(detections) if detections else None
         self.frame = frame
 
-    def plot(self):
+    def plot(self, **kwargs):
+        FakeYOLO.plot_kwargs.append(kwargs)
         return self.frame.copy()
 
 
@@ -53,6 +59,7 @@ class FakeYOLO:
     detections = []
     track_kwargs = []
     input_shapes = []
+    plot_kwargs = []
 
     def __init__(self, _model_name):
         self.frame_index = 0
@@ -71,6 +78,7 @@ class PipelineTests(unittest.TestCase):
         self.root = Path(self.temp_directory.name)
         FakeYOLO.track_kwargs = []
         FakeYOLO.input_shapes = []
+        FakeYOLO.plot_kwargs = []
 
     def tearDown(self):
         self.temp_directory.cleanup()
@@ -172,6 +180,9 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(rows[0]["device"], "Test CUDA")
         self.assertEqual(rows[0]["confidence_overrides"], "{}")
         self.assertEqual(rows[0]["track_buffer"], "30")
+        self.assertEqual(rows[0]["min_snapshot_size_px"], "0")
+        self.assertEqual(rows[0]["snapshot_padding_px"], "0")
+        self.assertEqual(FakeYOLO.plot_kwargs[0], {"line_width": 2.0, "font_size": 12.0})
         snapshot = cv2.imread(str(run_dir / rows[0]["snapshot_path"]))
         self.assertIsNotNone(snapshot)
         capture = cv2.VideoCapture(str(video_path))
@@ -382,6 +393,48 @@ class PipelineTests(unittest.TestCase):
         original, x_scale, y_scale = resize_for_inference(frame, 0)
         self.assertIs(original, frame)
         self.assertEqual((x_scale, y_scale), (1.0, 1.0))
+
+    def test_snapshot_crop_threshold_and_padding_are_clamped_to_frame(self):
+        frame = np.zeros((10, 12, 3), dtype=np.uint8)
+        padded = snapshot_crop(frame, (0, 0, 4, 3), min_size_px=3, padding_px=2)
+        self.assertEqual(padded.shape, (5, 6, 3))
+        self.assertIsNone(
+            snapshot_crop(frame, (0, 0, 4, 3), min_size_px=5, padding_px=2)
+        )
+        with self.assertRaises(ValueError):
+            snapshot_crop(frame, (0, 0, 4, 3), padding_px=-1)
+
+    def test_snapshot_padding_and_minimum_size_are_recorded(self):
+        video_path = self.make_video("snapshot-options.mp4", frame_count=6)
+        FakeYOLO.detections = [[self.detection(77)] for _ in range(6)]
+        run_dir = self.run_with_fake_model(
+            video_path,
+            ["car"],
+            self.root / "snapshot_runs",
+            min_snapshot_size_px=50,
+            snapshot_padding_px=10,
+        )
+        with (run_dir / "detections.csv").open(encoding="utf-8", newline="") as csv_file:
+            row = next(csv.DictReader(csv_file))
+        self.assertEqual(row["min_snapshot_size_px"], "50")
+        self.assertEqual(row["snapshot_padding_px"], "10")
+        snapshot = cv2.imread(str(run_dir / row["snapshot_path"]))
+        self.assertEqual(snapshot.shape[:2], (95, 80))
+
+        FakeYOLO.detections = [[self.detection(78)] for _ in range(6)]
+        omitted_run = self.run_with_fake_model(
+            video_path,
+            ["car"],
+            self.root / "omitted_snapshot_runs",
+            min_snapshot_size_px=100,
+        )
+        with (omitted_run / "detections.csv").open(encoding="utf-8", newline="") as csv_file:
+            omitted_row = next(csv.DictReader(csv_file))
+        self.assertEqual(omitted_row["snapshot_path"], "")
+        self.assertEqual(
+            analyze_csv(omitted_run / "detections.csv").counts.to_dict("records"),
+            [{"class": "car", "count": 1}],
+        )
 
     def test_detection_resizes_only_inference_and_keeps_source_sized_outputs(self):
         video_path = self.make_video("resize.mp4", frame_count=6)

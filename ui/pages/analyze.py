@@ -18,9 +18,11 @@ from core.config import (
     HALF_PRECISION,
     IMAGE_SIZE,
     MAX_INFERENCE_WIDTH,
+    MIN_SNAPSHOT_SIZE_PX,
     MIN_TRACK_FRAMES,
     MIN_BOX_PX,
     MODEL_NAME,
+    SNAPSHOT_PADDING_PX,
     TRACKER_CONFIG_PATH,
 )
 from core import detector
@@ -84,6 +86,11 @@ def render_analyze(
                 f"{MAX_INFERENCE_WIDTH}px" if MAX_INFERENCE_WIDTH else "Disabled",
             ),
             ("HALF PRECISION", "Enabled" if HALF_PRECISION else "Disabled"),
+            (
+                "MIN SNAPSHOT SIZE",
+                f"{MIN_SNAPSHOT_SIZE_PX}px" if MIN_SNAPSHOT_SIZE_PX else "Disabled",
+            ),
+            ("SNAPSHOT PADDING", f"{SNAPSHOT_PADDING_PX}px"),
             (
                 "TRACKER BUFFER",
                 f"{_tracker_buffer()} frames",

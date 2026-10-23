@@ -25,9 +25,11 @@ from core.config import (
     MAX_INFERENCE_WIDTH,
     HALF_PRECISION,
     MIN_BOX_PX,
+    MIN_SNAPSHOT_SIZE_PX,
     MIN_TRACK_FRAMES,
     MODEL_NAME,
     OUTPUTS_DIR,
+    SNAPSHOT_PADDING_PX,
     TRACKER_CONFIG_PATH,
 )
 from core.video_source import VideoSource, VideoSourceError
@@ -58,6 +60,8 @@ CSV_COLUMNS = (
     "track_buffer",
     "max_inference_width",
     "half_precision",
+    "min_snapshot_size_px",
+    "snapshot_padding_px",
 )
 
 
@@ -70,7 +74,7 @@ class TrackSummary:
     confidence_sum: float
     frames_seen: int
     best_confidence: float
-    snapshot_path: Path
+    snapshot_path: Path | None
 
     @property
     def avg_confidence(self) -> float:
@@ -124,6 +128,29 @@ def map_box_to_source(
     )
 
 
+def snapshot_crop(
+    frame: np.ndarray,
+    box: Sequence[int],
+    min_size_px: int = MIN_SNAPSHOT_SIZE_PX,
+    padding_px: int = SNAPSHOT_PADDING_PX,
+) -> np.ndarray | None:
+    """Return a clamped crop, or None when its unpadded size is below threshold."""
+    if min_size_px < 0 or padding_px < 0:
+        raise ValueError("Snapshot dimensions and padding cannot be negative.")
+    x1, y1, x2, y2 = box
+    width, height = x2 - x1, y2 - y1
+    if width <= 0 or height <= 0 or width < min_size_px or height < min_size_px:
+        return None
+    frame_height, frame_width = frame.shape[:2]
+    left = max(0, x1 - padding_px)
+    top = max(0, y1 - padding_px)
+    right = min(frame_width, x2 + padding_px)
+    bottom = min(frame_height, y2 + padding_px)
+    if right <= left or bottom <= top:
+        return None
+    return frame[top:bottom, left:right]
+
+
 def _write_csv(
     csv_path: Path,
     video_name: str,
@@ -142,6 +169,8 @@ def _write_csv(
     track_buffer: int,
     max_inference_width: int,
     half_precision: bool,
+    min_snapshot_size_px: int,
+    snapshot_padding_px: int,
 ) -> None:
     with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=CSV_COLUMNS)
@@ -178,6 +207,8 @@ def _write_csv(
                     "track_buffer": track_buffer,
                     "max_inference_width": max_inference_width,
                     "half_precision": half_precision,
+                    "min_snapshot_size_px": min_snapshot_size_px,
+                    "snapshot_padding_px": snapshot_padding_px,
                 }
             )
             return
@@ -194,7 +225,12 @@ def _write_csv(
                     "first_seen_sec": round(track.first_seen_sec, 3),
                     "last_seen_sec": round(track.last_seen_sec, 3),
                     "avg_confidence": round(track.avg_confidence, 5),
-                    "snapshot_path": track.snapshot_path.relative_to(csv_path.parent).as_posix(),
+                    "snapshot_path": (
+                        track.snapshot_path.relative_to(csv_path.parent).as_posix()
+                        if track.snapshot_path is not None
+                        and track.snapshot_path.is_file()
+                        else ""
+                    ),
                     "model": model_name,
                     "confidence": confidence,
                     "imgsz": imgsz,
@@ -210,6 +246,8 @@ def _write_csv(
                     "track_buffer": track_buffer,
                     "max_inference_width": max_inference_width,
                     "half_precision": half_precision,
+                    "min_snapshot_size_px": min_snapshot_size_px,
+                    "snapshot_padding_px": snapshot_padding_px,
                 }
             )
 
@@ -231,6 +269,8 @@ def run_detection(
     tracker_config: str | Path = TRACKER_CONFIG_PATH,
     max_inference_width: int = MAX_INFERENCE_WIDTH,
     half_precision: bool = HALF_PRECISION,
+    min_snapshot_size_px: int = MIN_SNAPSHOT_SIZE_PX,
+    snapshot_padding_px: int = SNAPSHOT_PADDING_PX,
 ) -> Path:
     """Track selected COCO classes and optionally stream RGB preview frames."""
     if not torch.cuda.is_available():
@@ -251,6 +291,8 @@ def run_detection(
         raise ValueError("Image size and minimum track length must be positive; pixel settings cannot be negative.")
     if max_inference_width < 0:
         raise ValueError("Maximum inference width cannot be negative.")
+    if min_snapshot_size_px < 0 or snapshot_padding_px < 0:
+        raise ValueError("Snapshot dimensions and padding cannot be negative.")
     overrides = dict(
         CLASS_CONFIDENCE_OVERRIDES
         if confidence_overrides is None
@@ -344,9 +386,18 @@ def run_detection(
                             metadata.width,
                             metadata.height,
                         )
+                        crop = snapshot_crop(
+                            frame,
+                            (x1, y1, x2, y2),
+                            min_snapshot_size_px,
+                            snapshot_padding_px,
+                        )
                         if track is None:
-                            snapshot_path = snapshots_dir / (
-                                f"{_safe_class_name(class_name)}_{track_id}.jpg"
+                            snapshot_path = (
+                                snapshots_dir
+                                / f"{_safe_class_name(class_name)}_{track_id}.jpg"
+                                if crop is not None
+                                else None
                             )
                             track = TrackSummary(
                                 track_id=track_id,
@@ -363,15 +414,26 @@ def run_detection(
                         track.last_seen_sec = time_sec
                         track.confidence_sum += float(confidence)
                         track.frames_seen += 1
-                        if confidence > track.best_confidence and x2 > x1 and y2 > y1:
+                        if (
+                            confidence > track.best_confidence
+                            and crop is not None
+                        ):
+                            if track.snapshot_path is None:
+                                track.snapshot_path = snapshots_dir / (
+                                    f"{_safe_class_name(class_name)}_{track_id}.jpg"
+                                )
                             if not cv2.imwrite(
                                 str(track.snapshot_path),
-                                frame[y1:y2, x1:x2],
+                                crop,
                             ):
                                 raise OSError(f"Could not write snapshot: {track.snapshot_path}")
                             track.best_confidence = float(confidence)
 
-                annotated_frame = result.plot()
+                label_scale = min(metadata.width, metadata.height)
+                annotated_frame = result.plot(
+                    line_width=max(2.0, label_scale / 720),
+                    font_size=max(12.0, label_scale / 48),
+                )
                 if annotated_frame.shape[:2] != (metadata.height, metadata.width):
                     annotated_frame = cv2.resize(
                         annotated_frame,
@@ -424,7 +486,11 @@ def run_detection(
             if track.frames_seen >= min_track_frames
         }
         for track_id, track in tracks.items():
-            if track_id not in kept_track_ids and track.snapshot_path.exists():
+            if (
+                track_id not in kept_track_ids
+                and track.snapshot_path is not None
+                and track.snapshot_path.exists()
+            ):
                 track.snapshot_path.unlink()
 
         processing_seconds = time.perf_counter() - started_at
@@ -446,6 +512,8 @@ def run_detection(
             track_buffer,
             max_inference_width,
             half_precision,
+            min_snapshot_size_px,
+            snapshot_padding_px,
         )
         return run_dir
 

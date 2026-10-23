@@ -76,3 +76,10 @@ tracks whose recorded visibility interval overlaps each window. KPI tooltips
 explain their definitions, and the approximate-count note sits beside the KPI
 strip. The new visible-object timeline is built from CSV first/last-seen values
 and has a pure SVG builder; its bucketing and SVG labels are covered by tests.
+Snapshot minimum size and padding controls default to the existing behavior and
+are recorded in the run CSV. Snapshot crops retain the highest-confidence
+eligible frame, clamp optional padding to source bounds, and skip crops smaller
+than the configured width/height threshold. The Results gallery sorts by
+average confidence and displays 24 items per page with placeholders for missing
+crops; dossier Prev/Next follows the selected gallery order. Annotation line
+and font sizes now scale with source resolution.

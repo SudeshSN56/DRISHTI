@@ -39,6 +39,8 @@ class AnalysisResult:
     track_buffer: int | None = None
     max_inference_width: int | None = None
     half_precision: bool | None = None
+    min_snapshot_size_px: int | None = None
+    snapshot_padding_px: int | None = None
 
     @property
     def processing_fps(self) -> float | None:
@@ -316,6 +318,16 @@ def analyze_csv(
             numeric=True,
         ),
         "half_precision": _optional_metadata(detections, "half_precision"),
+        "min_snapshot_size_px": _optional_metadata(
+            detections,
+            "min_snapshot_size_px",
+            numeric=True,
+        ),
+        "snapshot_padding_px": _optional_metadata(
+            detections,
+            "snapshot_padding_px",
+            numeric=True,
+        ),
     }
     for field in (
         "imgsz",
@@ -323,6 +335,8 @@ def analyze_csv(
         "min_box_px",
         "track_buffer",
         "max_inference_width",
+        "min_snapshot_size_px",
+        "snapshot_padding_px",
     ):
         if metadata[field] is not None:
             metadata[field] = int(metadata[field])
