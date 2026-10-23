@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 
 from core.analysis import analyze_csv
-from core.config import CONFIDENCE_THRESHOLD, IMAGE_SIZE, MIN_TRACK_FRAMES
 from core.report import build_brief
 from ui.charts import bar_list, histogram, stacked_bar
 from ui.components import notice, object_card
@@ -49,15 +48,16 @@ def render_results(run_dir: Path) -> None:
 
     st.header(f"Results: {analysis.video_name}")
     st.caption(f"Run {run_dir.name} · Processed {analysis.processed_at}")
-    kpis = st.columns(6)
-    metrics = (
+    metrics = [
         ("UNIQUE OBJECTS", str(total_objects)),
         ("CLASSES", str(len(counts))),
         ("MOST COMMON", common_class),
         ("BUSIEST WINDOW", busiest_label),
         ("VIDEO DURATION", f"{analysis.video_duration_sec:.1f}s"),
-        ("PROCESSING SPEED", "Not recorded"),
-    )
+    ]
+    if analysis.processing_fps is not None:
+        metrics.append(("PROCESSING SPEED", f"{analysis.processing_fps:.2f} FPS"))
+    kpis = st.columns(len(metrics))
     for column, (label, value) in zip(kpis, metrics):
         with column:
             st.metric(label, value)
@@ -104,10 +104,36 @@ def render_results(run_dir: Path) -> None:
     with st.expander("Detection parameters and provenance"):
         provenance = (
             ("Source of truth", "detections.csv"),
-            ("Confidence threshold", f"{CONFIDENCE_THRESHOLD:.2f}"),
-            ("Image size", f"{IMAGE_SIZE}px"),
-            ("Minimum track length", f"{MIN_TRACK_FRAMES} frames"),
-            ("Processing speed", "Not recorded in CSV"),
+            ("Model", analysis.model or "Not recorded"),
+            (
+                "Confidence threshold",
+                f"{analysis.confidence:.2f}" if analysis.confidence is not None else "Not recorded",
+            ),
+            (
+                "Image size",
+                f"{analysis.imgsz}px" if analysis.imgsz is not None else "Not recorded",
+            ),
+            (
+                "Minimum track length",
+                f"{analysis.min_track_frames} frames"
+                if analysis.min_track_frames is not None else "Not recorded",
+            ),
+            (
+                "Minimum box size",
+                f"{analysis.min_box_px}px" if analysis.min_box_px is not None else "Not recorded",
+            ),
+            (
+                "Processing time",
+                f"{analysis.processing_seconds:.2f}s"
+                if analysis.processing_seconds is not None else "Not recorded",
+            ),
+            ("Device", analysis.device or "Not recorded"),
+            (
+                "Processing speed",
+                f"{analysis.processing_fps:.2f} FPS"
+                if analysis.processing_fps is not None else "Not recorded",
+            ),
+            ("Location", analysis.location or "Not recorded"),
         )
         st.dataframe(
             pd.DataFrame(provenance, columns=("Parameter", "Value")),
