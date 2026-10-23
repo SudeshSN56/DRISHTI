@@ -65,8 +65,18 @@ class AppTests(unittest.TestCase):
 
             selected_classes = []
 
-            def fake_run_detection(video, classes, progress_callback=None):
+            def fake_run_detection(
+                video,
+                classes,
+                progress_callback=None,
+                preview_callback=None,
+            ):
                 selected_classes.extend(classes)
+                if preview_callback is not None:
+                    preview_callback(
+                        np.zeros((24, 32, 3), dtype=np.uint8),
+                        {"car": 1},
+                    )
                 run_dir = output_root / "run_20261021_000000"
                 run_dir.mkdir()
                 with (run_dir / "detections.csv").open(
@@ -131,6 +141,10 @@ class AppTests(unittest.TestCase):
             self.assertFalse(app.exception, app.exception)
             self.assertEqual(selected_classes, ["car"])
             self.assertIn("1 unique tracked object(s)", app.get("info")[0].value)
+            self.assertTrue(app.get("image"), "Live preview image was not displayed.")
+            self.assertTrue(
+                any(table.value.iloc[0]["tracks"] == 1 for table in app.get("dataframe"))
+            )
             self.assertTrue(
                 any(
                     header.value == "Results: upload.mp4"

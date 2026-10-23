@@ -5,4 +5,6 @@ __pycache__/
 outputs/run_*/
 test_videos/*
 !test_videos/.gitkeep
+datasets/*
+!datasets/.gitkeep
 yolo11s.pt

@@ -5,9 +5,11 @@ from datetime import datetime
 from pathlib import Path
 import re
 import sys
+from collections import Counter
 from typing import Callable, Sequence
 
 import cv2
+import numpy as np
 import torch
 from imageio_ffmpeg import write_frames
 from ultralytics import YOLO
@@ -24,6 +26,7 @@ from core.video_source import VideoSource, VideoSourceError
 
 
 ProgressCallback = Callable[[int, int], None]
+LivePreviewCallback = Callable[[np.ndarray, dict[str, int]], None]
 
 CSV_COLUMNS = (
     "video_name",
@@ -121,12 +124,19 @@ def run_detection(
     video_path: str | Path,
     selected_classes: Sequence[str] | None = None,
     progress_callback: ProgressCallback | None = None,
+    preview_callback: LivePreviewCallback | None = None,
+    preview_every_n_frames: int = 3,
+    preview_max_width: int = 640,
     output_root: str | Path = OUTPUTS_DIR,
     model_name: str = MODEL_NAME,
 ) -> Path:
-    """Track selected COCO classes in a video and return its output run directory."""
+    """Track selected COCO classes and optionally stream RGB preview frames."""
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is unavailable. Install a CUDA-enabled PyTorch build to run detection.")
+    if preview_every_n_frames <= 0:
+        raise ValueError("Live preview interval must be a positive number of frames.")
+    if preview_max_width <= 0:
+        raise ValueError("Live preview width must be a positive number of pixels.")
 
     classes = tuple(selected_classes if selected_classes is not None else DEFAULT_CLASSES)
     if not classes:
@@ -223,6 +233,31 @@ def run_detection(
                             track.best_confidence = float(confidence)
 
                 annotated_frame = result.plot()
+                frame_index += 1
+                if preview_callback is not None and (
+                    frame_index % preview_every_n_frames == 0
+                    or frame_index == metadata.frame_count
+                ):
+                    preview_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                    if metadata.width > preview_max_width:
+                        preview_height = round(
+                            metadata.height * preview_max_width / metadata.width
+                        )
+                        preview_frame = cv2.resize(
+                            preview_frame,
+                            (preview_max_width, preview_height),
+                            interpolation=cv2.INTER_AREA,
+                        )
+                    live_counts = Counter(
+                        track.class_name
+                        for track in tracks.values()
+                        if track.frames_seen >= MIN_TRACK_FRAMES
+                    )
+                    preview_callback(
+                        preview_frame,
+                        dict(sorted(live_counts.items())),
+                    )
+
                 if metadata.width % 2 or metadata.height % 2:
                     annotated_frame = cv2.copyMakeBorder(
                         annotated_frame,
@@ -234,7 +269,6 @@ def run_detection(
                         value=(0, 0, 0),
                     )
                 writer.send(cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB))
-                frame_index += 1
                 if progress_callback is not None:
                     progress_callback(frame_index, metadata.frame_count)
         finally:

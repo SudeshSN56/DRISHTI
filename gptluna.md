@@ -1,7 +1,7 @@
 # Chat Update Log
 
 Project: Drone Surveillance Report System  
-Last updated: 21 October 2026
+Last updated: 23 October 2026
 
 This file records the implementation updates completed in this chat. The project
 plan is being followed phase by phase.
@@ -103,34 +103,80 @@ plan is being followed phase by phase.
 
 ## Current status
 
-- Phases 0–6 software implementation and synthetic verification are complete;
-  final tests pass (6 automated tests).
-- The app is ready for real-video validation. No demo videos are currently in
-  `test_videos`.
+- Revised Phase 0.5, Phase 1 live-preview, and Phase 3 live UI requirements are
+  implemented. The full automated suite now has 9 passing tests.
+- The VisDrone-VID validation archive is locally present under ignored
+  `datasets/`, and three converted clips plus three detection runs are present
+  locally. Dataset and generated video/output files are excluded from Git.
+- The real detector completed all three selected sequences and the live-preview
+  callback ran at the expected three-frame interval. A Streamlit AppTest
+  rehearsal on a real VisDrone clip also verified preview rendering, CSV-based
+  results, annotated video, and PDF generation only after **Print Brief**.
+- Sampled first, middle, and last annotated frames from each clip and 13 of 371
+  saved crops. The videos and crops are viewable, but crop usefulness varies:
+  distant/partially visible objects can produce tiny or ambiguous crops. This
+  was a qualitative output check, not a comparison against VisDrone ground
+  truth or an accuracy evaluation.
 
-## When demo videos are provided — remaining work
+## Remaining validation work
 
-1. Put the traffic and crowd clips in `test_videos` and record their filenames
-   and basic properties (duration, resolution, and FPS) in this log.
-2. Run both clips end to end. Check CSV rows against a manual sample count,
-   verify snapshots and annotated H.264 playback, download the CSV, click
-   **Print Brief**, and compare PDF counts with the CSV.
-3. Run a clip with no selected objects and confirm the friendly empty-results
-   message and a valid zero-detection PDF.
-4. Run a corrupt or non-video file and confirm the app shows a clear error
-   without crashing.
-5. Run a clip near five minutes and record elapsed time, processed FPS, and
-   peak memory. Confirm upload and processing work.
-6. Run a high-altitude clip, record observed misses, and report them as the
-   documented small-object limitation rather than assuming perfect detection.
-7. Repeat with edited class selections and confirm CSV/results change
-   accordingly.
-8. Update this `gptluna.md` with the video names, results, measurements, failures
-   and fixes, then update README's test status if the measured results change.
+1. Compare sampled detections against corresponding VisDrone ground-truth
+   annotations where classes and frame timing permit; do not treat raw track
+   counts as accuracy metrics.
+2. Obtain the planned separate stock clips and a 3–5-minute stress clip if
+   available; currently the local sample consists of VisDrone validation
+   sequences only. The synthetic >5-minute test does not replace measuring
+   resource use on real 1080p footage.
+3. Run a true high-altitude sample if available; the current selections are
+   traffic/intersection footage and do not establish high-altitude behavior.
+4. Review the dataset provider's reuse/redistribution terms before sharing any
+   data or generated content derived from it.
+5. Update this file with any further inspection results, resource measurements,
+   or fixes.
 
-Do not mark real-footage acceptance complete until the two different real clips
-have passed the end-to-end checks. The current synthetic FPS figure is only a
-baseline and must not be presented as measured real-footage performance.
+## Candidate real-video validation data — VisDrone
+
+- Recommended candidate: [VisDrone-VID](https://github.com/VisDrone/VisDrone-Dataset),
+  the repository's video object-detection benchmark. Prefer a small number of
+  validation or `test-dev` clips for local inference/validation; the repository
+  lists these splits separately. Do not use the training split for this
+  project's validation, because the project scope explicitly excludes model
+  training.
+- Use downloaded clips locally under `test_videos` after checking the dataset's
+  download terms. That directory is intentionally git-ignored; do not add
+  dataset videos or annotations to the source repository or its GitHub remote.
+- The GitHub repository metadata reports no declared license and the README
+  links to hosted downloads without stating reuse/redistribution terms. Confirm
+  the applicable terms with the dataset providers before redistribution or
+  public release. Citing the source is good practice, but attribution alone
+  does not replace permission.
+- The linked VID toolkit describes separate training, validation, and
+  test-challenge sets; annotations are available for training/validation, while
+  challenge annotations are unavailable. Its page says access is obtained via
+  challenge registration and calls its code research-purpose-only.
+- Check the downloaded file layout before using it: the toolkit works with
+  per-frame sequences and benchmark annotation files, while this app's upload
+  UI accepts MP4, AVI, or MOV. If the data arrives as ordered frames, create a
+  local review video without changing the original dataset; record the chosen
+  frame rate and sequence name so the test is reproducible.
+- The project detector uses pretrained COCO classes, while VisDrone annotations
+  contain dataset-specific categories. Treat this first as an end-to-end
+  robustness check; do not claim annotation-level accuracy for categories that
+  do not map directly to the selected COCO classes.
+- Suggested citation from the official repository:
+
+  ```bibtex
+  @article{zhu2021detection,
+    title={Detection and tracking meet drones challenge},
+    author={Zhu, Pengfei and Wen, Longyin and Du, Dawei and Bian, Xiao and Fan, Heng and Hu, Qinghua and Ling, Haibin},
+    journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
+    volume={44},
+    number={11},
+    pages={7380--7399},
+    year={2021},
+    publisher={IEEE}
+  }
+  ```
 
 ## 21 October 2026 — Release-readiness recheck
 
@@ -139,6 +185,61 @@ baseline and must not be presented as measured real-footage performance.
 - `pip check` reported no broken requirements.
 - Confirmed `test_videos` has no supplied clips and `outputs` contains no test
   runs. Real-footage acceptance is still the next external prerequisite.
+
+## 23 October 2026 — Revised plan implementation
+
+- Added `tools/frames_to_video.py` to find sequence folders under a dataset
+  parent, naturally sort JPG/JPEG frames, ignore annotation files, and write
+  one H.264 MP4 per sequence. It supports FPS and sequence-limit arguments.
+- Added ignored `datasets/` storage and documented the Phase 0.5 VisDrone
+  validation workflow. Dataset archives and generated demo videos stay out of
+  Git.
+- The official Google Drive link initially returned a quota-exceeded page.
+  Later the complete archive (`VisDrone2019-VID-val.zip`, 1,602,397,759 bytes)
+  and extracted data appeared in the workspace. The archive passed ZIP
+  validation and was moved under ignored `datasets/`; no unofficial mirror was
+  used by the implementation.
+- The validation set contains seven sequence frame folders. Selected the
+  daytime traffic/crowd sequences `uav0000137_00458_v`, `uav0000305_00000_v`,
+  and `uav0000339_00001_v` after checking sample images and annotation
+  categories. The annotated sequences contain category-1 pedestrian and
+  category-2 people instances as well as category-4 car instances.
+- Stitched the three sequences to H.264 at the assumed 30 FPS. Verified all
+  frames are playable:
+  - `uav0000137_00458_v.mp4`: 233 frames, 2688x1512, about 7.77 seconds.
+  - `uav0000305_00000_v.mp4`: 184 frames, 1904x1072, about 6.13 seconds.
+  - `uav0000339_00001_v.mp4`: 275 frames, 1904x1072, about 9.17 seconds.
+- Extended the detector with an optional live-preview callback. It supplies a
+  downscaled annotated RGB image and per-class qualified track counts every
+  three frames and at the last frame. The Streamlit Run view updates the image
+  and counts beside progress.
+- Revised automated tests to check callback interval/counts/dimensions, frame
+  natural ordering and H.264 readability, and the UI's live preview.
+- Added this `PLAN.md` to record phase status and revised requirements.
+
+### Revised-plan verification
+
+- Final revised suite: 9 automated tests pass; app/core/tests/tools compilation
+  passes.
+- Actual CUDA detections on the RTX 4060 Laptop GPU, using selected classes
+  `person`, `car`, `truck`, `bus`, `bicycle`, and `motorcycle`:
+
+  | Clip | Frames / size | Time | FPS | Tracked IDs by class |
+  |---|---|---:|---:|---|
+  | `uav0000137_00458_v.mp4` | 233 / 2688x1512 | 52.5 s | 4.44 | person 121, car 72, motorcycle 33, bicycle 24, bus 1, truck 1 |
+  | `uav0000305_00000_v.mp4` | 184 / 1904x1072 | 10.0 s | 18.41 | car 17, truck 1 |
+  | `uav0000339_00001_v.mp4` | 275 / 1904x1072 | 17.5 s | 15.76 | person 42, car 37, motorcycle 13, truck 6, bicycle 3 |
+
+- The preview callback ran 78, 62, and 92 times for those clips. The Streamlit
+  UI was also exercised with the 233-frame clip: live preview rendered; the
+  results came from CSV; CSV and annotated video were present; no PDF existed
+  until **Print Brief** was clicked; then a downloadable PDF was created.
+- The three measured speeds are individual end-to-end runs with differing
+  initialization/warm-up; do not compare them as a controlled benchmark or
+  claim annotation-level model accuracy from these track counts. COCO and
+  VisDrone classes differ, and trackers can split or merge IDs.
+- Phase 0.5's three-playable-clip acceptance is met. The additional stock clips,
+  real 3–5-minute stress footage, and high-altitude footage remain outstanding.
 
 ## Repository publishing
 
@@ -158,3 +259,14 @@ baseline and must not be presented as measured real-footage performance.
 - `.gitignore` excludes the virtual environment, model weights, Python caches,
   generated run folders, and local demo clips. `.vscode` is intentionally not
   included.
+
+## 23 October 2026 — Local app preview
+
+- Started Streamlit at `http://127.0.0.1:8501`; the local HTTP endpoint returned
+  200 and the integrated browser rendered the project title, video upload, and
+  class selector.
+- To preview this checkout, open that URL while the Streamlit process is
+  running. Upload one of the local converted clips from `test_videos/` and
+  click **Run** to see live annotated frames/counts and the saved results.
+- The server was started with
+  `venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true`.

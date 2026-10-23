@@ -2,6 +2,7 @@
 ultralytics
 lap>=0.5.12
 opencv-python
+numpy
 pandas
 matplotlib
 streamlit

@@ -1,5 +1,7 @@
 import csv
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -11,6 +13,7 @@ from core.analysis import analyze_csv
 from core.detector import run_detection
 from core.report import build_brief
 from core.video_source import VideoSource, VideoSourceError
+from tools.frames_to_video import stitch_sequence
 
 
 class FakeTensor:
@@ -91,7 +94,14 @@ class PipelineTests(unittest.TestCase):
     def detection(track_id, class_id=3, confidence=0.8):
         return (track_id, [20, 15, 80, 90], class_id, confidence)
 
-    def run_with_fake_model(self, video_path, classes, output_root):
+    def run_with_fake_model(
+        self,
+        video_path,
+        classes,
+        output_root,
+        preview_callback=None,
+        preview_max_width=640,
+    ):
         with (
             patch("core.detector.torch.cuda.is_available", return_value=True),
             patch("core.detector.YOLO", FakeYOLO),
@@ -100,6 +110,8 @@ class PipelineTests(unittest.TestCase):
                 video_path,
                 selected_classes=classes,
                 output_root=output_root,
+                preview_callback=preview_callback,
+                preview_max_width=preview_max_width,
                 model_name="fake.pt",
             )
 
@@ -121,7 +133,18 @@ class PipelineTests(unittest.TestCase):
         ]
         FakeYOLO.detections.append([])
 
-        run_dir = self.run_with_fake_model(video_path, ["car"], self.root / "runs")
+        previews = []
+        run_dir = self.run_with_fake_model(
+            video_path,
+            ["car"],
+            self.root / "runs",
+            preview_callback=lambda frame, counts: previews.append((frame, counts)),
+            preview_max_width=80,
+        )
+        self.assertEqual(len(previews), 3)
+        self.assertEqual([counts for _, counts in previews], [{}, {"car": 1}, {"car": 1}])
+        self.assertEqual(previews[0][0].shape, (60, 80, 3))
+        self.assertEqual(previews[-1][0].dtype, np.uint8)
         with (run_dir / "detections.csv").open(
             encoding="utf-8",
             newline="",
@@ -161,6 +184,73 @@ class PipelineTests(unittest.TestCase):
 
         analysis = analyze_csv(run_dir / "detections.csv")
         self.assertEqual(analysis.counts.to_dict("records"), [{"class": "car", "count": 1}])
+
+    def test_frame_folder_stitches_naturally_sorted_frames_to_h264(self):
+        sequence = self.root / "dataset" / "sequence_1"
+        sequence.mkdir(parents=True)
+        for frame_number, value in ((1, 10), (2, 80), (10, 180)):
+            frame = np.full((48, 64, 3), value, dtype=np.uint8)
+            self.assertTrue(
+                cv2.imwrite(str(sequence / f"frame{frame_number:07d}.jpg"), frame)
+            )
+        (sequence / "annotations.txt").write_text("ignored", encoding="utf-8")
+
+        output_path = stitch_sequence(sequence, self.root / "stitched" / "clip.mp4", fps=10)
+        capture = cv2.VideoCapture(str(output_path))
+        self.assertTrue(capture.isOpened())
+        values = []
+        while True:
+            readable, frame = capture.read()
+            if not readable:
+                break
+            values.append(float(frame.mean()))
+        capture.release()
+
+        self.assertEqual(len(values), 3)
+        self.assertEqual(values, sorted(values))
+        self.assertEqual(round(values[0]), 10)
+        self.assertEqual(round(values[-1]), 180)
+
+    def test_frame_stitcher_cli_scans_parent_and_limits_sequences(self):
+        input_root = self.root / "dataset"
+        for sequence_name in ("sequence10", "sequence2"):
+            sequence_dir = input_root / sequence_name
+            sequence_dir.mkdir(parents=True)
+            frame = np.full((48, 64, 3), 40, dtype=np.uint8)
+            self.assertTrue(cv2.imwrite(str(sequence_dir / "0000001.jpg"), frame))
+
+        output_dir = self.root / "clips"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tools.frames_to_video",
+                str(input_root),
+                "--output",
+                str(output_dir),
+                "--limit",
+                "1",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((output_dir / "sequence2.mp4").is_file(), result.stdout)
+        self.assertFalse((output_dir / "sequence10.mp4").exists())
+
+    def test_preview_configuration_is_validated(self):
+        video_path = self.make_video("preview.mp4", frame_count=1)
+        with patch("core.detector.torch.cuda.is_available", return_value=True):
+            with self.assertRaisesRegex(ValueError, "interval"):
+                run_detection(
+                    video_path,
+                    ["person"],
+                    preview_every_n_frames=0,
+                    output_root=self.root / "invalid_interval",
+                    model_name="unused.pt",
+                )
 
     def test_zero_detection_csv_can_produce_print_brief(self):
         video_path = self.make_video("empty.mp4", frame_count=3)

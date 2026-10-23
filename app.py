@@ -1,6 +1,7 @@
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from ultralytics import YOLO
@@ -154,6 +155,12 @@ def main() -> None:
         else:
             progress_bar = st.progress(0, text="Preparing video...")
             status = st.empty()
+            preview_column, counts_column = st.columns([3, 1])
+            preview_placeholder = preview_column.empty()
+            counts_placeholder = counts_column.empty()
+            preview_column.caption("Live annotated preview")
+            counts_column.caption("Live tracks (minimum length applied)")
+
             try:
                 with tempfile.TemporaryDirectory() as temporary_directory:
                     temporary_path = (
@@ -172,10 +179,30 @@ def main() -> None:
                             text=f"Processing frame {processed:,} of {total:,}",
                         )
 
+                    def update_preview(
+                        frame_rgb: np.ndarray,
+                        live_counts: dict[str, int],
+                    ) -> None:
+                        preview_placeholder.image(frame_rgb, channels="RGB")
+                        counts_placeholder.dataframe(
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "class": class_name,
+                                        "tracks": live_counts.get(class_name, 0),
+                                    }
+                                    for class_name in selected_classes
+                                ]
+                            ),
+                            hide_index=True,
+                            width="stretch",
+                        )
+
                     run_dir = run_detection(
                         temporary_path,
                         selected_classes,
                         progress_callback=update_progress,
+                        preview_callback=update_preview,
                     )
 
                 st.session_state["selected_run_dir"] = str(run_dir)
