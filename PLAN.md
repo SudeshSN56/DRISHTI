@@ -70,3 +70,9 @@ GPU run at default width took 29.96s (7.78 FPS) and returned 256 unique tracks;
 a single 1280px inference-width run took 29.26s (7.96 FPS) and returned 204.
 These are individual observations, not a benchmark or accuracy comparison.
 Because counts changed, the optional width reduction stays disabled by default.
+
+Results now distinguish new tracks first seen per five-second window from
+tracks whose recorded visibility interval overlaps each window. KPI tooltips
+explain their definitions, and the approximate-count note sits beside the KPI
+strip. The new visible-object timeline is built from CSV first/last-seen values
+and has a pure SVG builder; its bucketing and SVG labels are covered by tests.

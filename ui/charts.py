@@ -73,7 +73,12 @@ def bar_list(items: Iterable[tuple[str, int]]) -> str:
     )
 
 
-def histogram(buckets: Iterable[tuple[str, int]]) -> str:
+def histogram(
+    buckets: Iterable[tuple[str, int]],
+    *,
+    aria_label: str = "Five-second object timeline",
+    tooltip_label: str = "first-seen objects",
+) -> str:
     values = list(buckets)
     width, height = 800, 250
     left, right, top, bottom = 48, 16, 24, 42
@@ -99,7 +104,7 @@ def histogram(buckets: Iterable[tuple[str, int]]) -> str:
             y = top + plot_height - bar_height
             safe_label = html.escape(label)
             elements.append(
-                f'<g><title>{safe_label}: {value} first-seen objects</title>'
+                f'<g><title>{safe_label}: {value} {tooltip_label}</title>'
                 f'<path d="{bar_path(x, y, bar_width, bar_height, 4)}" fill="var(--text-2)"/>'
                 f'<text x="{_number(x + bar_width / 2)}" y="{height - 18}" '
                 f'text-anchor="middle" fill="var(--muted)" font-size="10">{safe_label}</text></g>'
@@ -111,9 +116,17 @@ def histogram(buckets: Iterable[tuple[str, int]]) -> str:
         )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
-        'width="100%" role="img" aria-label="Five-second object timeline">'
+        f'width="100%" role="img" aria-label="{html.escape(aria_label)}">'
         + "".join(elements)
         + "</svg>"
+    )
+
+
+def visible_objects_histogram(buckets: Iterable[tuple[str, int]]) -> str:
+    return histogram(
+        buckets,
+        aria_label="Objects visible over time in five-second windows",
+        tooltip_label="active objects",
     )
 
 

@@ -7,7 +7,7 @@ import streamlit as st
 
 from core.analysis import analyze_csv
 from core.report import build_brief
-from ui.charts import bar_list, histogram, stacked_bar
+from ui.charts import bar_list, histogram, stacked_bar, visible_objects_histogram
 from ui.components import notice, object_card
 from ui.data import ObjectInfo, read_objects
 
@@ -49,18 +49,37 @@ def render_results(run_dir: Path) -> None:
     st.header(f"Results: {analysis.video_name}")
     st.caption(f"Run {run_dir.name} · Processed {analysis.processed_at}")
     metrics = [
-        ("UNIQUE OBJECTS", str(total_objects)),
-        ("CLASSES", str(len(counts))),
-        ("MOST COMMON", common_class),
-        ("BUSIEST WINDOW", busiest_label),
-        ("VIDEO DURATION", f"{analysis.video_duration_sec:.1f}s"),
+        (
+            "UNIQUE OBJECTS",
+            str(total_objects),
+            "Distinct class/track-ID pairs retained in detections.csv.",
+        ),
+        ("CLASSES", str(len(counts)), "Object classes with at least one retained track."),
+        ("MOST COMMON", common_class, "Class with the most retained unique tracks."),
+        (
+            "BUSIEST WINDOW",
+            busiest_label,
+            "Five-second window with the most tracks first seen in that interval.",
+        ),
+        (
+            "VIDEO DURATION",
+            f"{analysis.video_duration_sec:.1f}s",
+            "Duration recorded for the source video.",
+        ),
     ]
     if analysis.processing_fps is not None:
-        metrics.append(("PROCESSING SPEED", f"{analysis.processing_fps:.2f} FPS"))
+        metrics.append(
+            (
+                "PROCESSING SPEED",
+                f"{analysis.processing_fps:.2f} FPS",
+                "Source video frames divided by recorded run processing time.",
+            )
+        )
     kpis = st.columns(len(metrics))
-    for column, (label, value) in zip(kpis, metrics):
+    for column, (label, value, explanation) in zip(kpis, metrics):
         with column:
-            st.metric(label, value)
+            st.metric(label, value, help=explanation)
+    st.caption("Counts are approximate; tracking can split or merge object IDs.")
 
     st.markdown(
         '<div class="console-panel"><div class="console-panel-title">'
@@ -80,7 +99,8 @@ def render_results(run_dir: Path) -> None:
         st.markdown('<div class="console-panel-title">OBJECTS BY CLASS</div>', unsafe_allow_html=True)
         st.markdown(bar_list(counts), unsafe_allow_html=True)
     with chart_right:
-        st.markdown('<div class="console-panel-title">FIRST-SEEN TIMELINE · 5-SECOND BUCKETS</div>', unsafe_allow_html=True)
+        st.markdown('<div class="console-panel-title">NEW OBJECTS FIRST SEEN PER 5-SECOND WINDOW</div>', unsafe_allow_html=True)
+        st.caption("Each track is counted in the window containing its earliest recorded frame.")
         timeline_total = (
             analysis.timeline.groupby(
                 ["bucket_start_sec", "bucket_end_sec"],
@@ -98,6 +118,25 @@ def render_results(run_dir: Path) -> None:
             for row in timeline_total.to_dict("records")
         ]
         st.markdown(histogram(timeline_buckets), unsafe_allow_html=True)
+    visible_total = (
+        analysis.visible_timeline.groupby(
+            ["bucket_start_sec", "bucket_end_sec"],
+            as_index=False,
+        )["count"].sum()
+        if not analysis.visible_timeline.empty
+        else pd.DataFrame(columns=["bucket_start_sec", "bucket_end_sec", "count"])
+    )
+    visible_buckets = [
+        (
+            f"{_time_label(float(row['bucket_start_sec']))}–"
+            f"{_time_label(float(row['bucket_end_sec']))}",
+            int(row["count"]),
+        )
+        for row in visible_total.to_dict("records")
+    ]
+    st.markdown('<div class="console-panel-title">OBJECTS VISIBLE OVER TIME</div>', unsafe_allow_html=True)
+    st.caption("Tracks are active in a five-second window when their recorded visibility interval overlaps it.")
+    st.markdown(visible_objects_histogram(visible_buckets), unsafe_allow_html=True)
     st.markdown('<div class="console-panel-title">CLASS MIX · 100% OF UNIQUE OBJECTS</div>', unsafe_allow_html=True)
     st.markdown(stacked_bar(counts), unsafe_allow_html=True)
 

@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 import cv2
 import numpy as np
+import pandas as pd
 
-from core.analysis import analyze_csv
+from core.analysis import _build_visible_timeline, analyze_csv
 from core.detector import map_box_to_source, resize_for_inference, run_detection
 from core.report import build_brief
 from core.video_source import VideoSource, VideoSourceError
@@ -407,6 +408,36 @@ class PipelineTests(unittest.TestCase):
         capture.release()
         self.assertTrue(readable)
         self.assertEqual(annotated_frame.shape[:2], (120, 160))
+
+    def test_visible_timeline_counts_tracks_overlapping_each_five_second_bucket(self):
+        detections = pd.DataFrame(
+            [
+                ("car", "1", 1.0, 6.0),
+                ("car", "2", 4.0, 4.0),
+                ("person", "3", 7.0, 11.0),
+            ],
+            columns=("class", "track_id", "first_seen_sec", "last_seen_sec"),
+        )
+        timeline = _build_visible_timeline(
+            detections,
+            duration_sec=12,
+            bucket_seconds=5,
+            classes=["car", "person"],
+        )
+        actual = timeline.set_index(
+            ["bucket_start_sec", "class"]
+        )["count"].to_dict()
+        self.assertEqual(
+            actual,
+            {
+                (0, "car"): 2,
+                (0, "person"): 0,
+                (5, "car"): 1,
+                (5, "person"): 1,
+                (10, "car"): 0,
+                (10, "person"): 1,
+            },
+        )
 
     def test_video_over_five_minutes_processes_without_full_frame_retention(self):
         video_path = self.make_video("long.mp4", frame_count=1501)

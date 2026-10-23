@@ -2,7 +2,14 @@ from datetime import date
 from pathlib import Path
 import unittest
 
-from ui.charts import bar_list, bar_path, histogram, nice_max, stacked_bar
+from ui.charts import (
+    bar_list,
+    bar_path,
+    histogram,
+    nice_max,
+    stacked_bar,
+    visible_objects_histogram,
+)
 from ui.components import class_color
 from ui.data import RunInfo, filter_runs
 from ui.pages.results import _time_label
@@ -30,6 +37,14 @@ class UIHelperTests(unittest.TestCase):
         self.assertIn("#fab219", svg)
         self.assertIn("25.0%", svg)
         self.assertIn("No detections", stacked_bar([]))
+
+    def test_visible_objects_histogram_labels_counts_as_active_objects(self):
+        svg = visible_objects_histogram([("00:00–00:05", 4)])
+        self.assertIn(
+            'aria-label="Objects visible over time in five-second windows"',
+            svg,
+        )
+        self.assertIn("<title>00:00–00:05: 4 active objects</title>", svg)
 
     def test_bar_path_and_axis_formatting(self):
         self.assertIn("Q 10 20 14 20", bar_path(10, 20, 30, 40, 4))

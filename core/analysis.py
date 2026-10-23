@@ -24,6 +24,7 @@ class AnalysisResult:
     processed_at: str
     counts: pd.DataFrame
     timeline: pd.DataFrame
+    visible_timeline: pd.DataFrame
     summary: str
     fps: float | None = None
     model: str | None = None
@@ -148,6 +149,79 @@ def _build_timeline(
     )
 
 
+def _build_visible_timeline(
+    detections: pd.DataFrame,
+    duration_sec: float,
+    bucket_seconds: int,
+    classes: list[str],
+) -> pd.DataFrame:
+    columns = ("bucket_start_sec", "bucket_end_sec", "class", "count")
+    if not classes:
+        return pd.DataFrame(columns=columns)
+
+    bucket_count = ceil(duration_sec / bucket_seconds)
+    bucket_starts = [index * bucket_seconds for index in range(bucket_count)]
+    timeline = pd.MultiIndex.from_product(
+        (bucket_starts, classes),
+        names=("bucket_start_sec", "class"),
+    ).to_frame(index=False)
+    timeline["count"] = 0
+
+    if not detections.empty:
+        first_seen = pd.to_numeric(detections["first_seen_sec"], errors="raise")
+        last_seen = pd.to_numeric(detections["last_seen_sec"], errors="raise")
+        if (
+            first_seen.isna().any()
+            or last_seen.isna().any()
+            or (first_seen < 0).any()
+            or (last_seen < first_seen).any()
+            or (last_seen > duration_sec).any()
+        ):
+            raise ValueError("Detection CSV contains an invalid object visibility interval.")
+        intervals = detections[["class", "track_id"]].copy()
+        intervals["first_seen_sec"] = first_seen
+        intervals["last_seen_sec"] = last_seen
+        intervals = intervals.groupby(
+            ["class", "track_id"],
+            as_index=False,
+        ).agg(
+            first_seen_sec=("first_seen_sec", "min"),
+            last_seen_sec=("last_seen_sec", "max"),
+        )
+        active = []
+        for bucket_start in bucket_starts:
+            bucket_end = min(bucket_start + bucket_seconds, duration_sec)
+            active_tracks = intervals.loc[
+                (intervals["first_seen_sec"] < bucket_end)
+                & (intervals["last_seen_sec"] >= bucket_start)
+            ]
+            if not active_tracks.empty:
+                by_class = active_tracks.groupby("class")["track_id"].nunique()
+                active.extend(
+                    (bucket_start, class_name, int(count))
+                    for class_name, count in by_class.items()
+                )
+        if active:
+            active_counts = pd.DataFrame(
+                active,
+                columns=("bucket_start_sec", "class", "count"),
+            )
+            timeline = timeline.drop(columns="count").merge(
+                active_counts,
+                on=["bucket_start_sec", "class"],
+                how="left",
+            )
+            timeline["count"] = timeline["count"].fillna(0).astype(int)
+
+    timeline["bucket_end_sec"] = (
+        timeline["bucket_start_sec"] + bucket_seconds
+    ).clip(upper=duration_sec)
+    return timeline.loc[:, columns].sort_values(
+        ["bucket_start_sec", "class"],
+        ignore_index=True,
+    )
+
+
 def _build_summary(
     video_name: str,
     duration_sec: float,
@@ -217,6 +291,12 @@ def analyze_csv(
     )
     classes = sorted(counts["class"].tolist())
     timeline = _build_timeline(valid, duration_sec, bucket_seconds, classes)
+    visible_timeline = _build_visible_timeline(
+        valid,
+        duration_sec,
+        bucket_seconds,
+        classes,
+    )
     summary = _build_summary(video_name, duration_sec, counts, timeline)
     metadata = {
         "fps": _optional_metadata(detections, "fps", numeric=True),
@@ -254,6 +334,7 @@ def analyze_csv(
         processed_at=processed_at,
         counts=counts,
         timeline=timeline,
+        visible_timeline=visible_timeline,
         summary=summary,
         **metadata,
     )
