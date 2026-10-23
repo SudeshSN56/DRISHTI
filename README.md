@@ -89,6 +89,36 @@ filter, when enabled, rejects detections whose width **or** height is below
 the configured number of pixels in the source frame. Detection settings are
 visible in Analyze and recorded in each new run's CSV.
 
+## How to measure count error
+
+Create a JSON file with your own manually counted class totals keyed by the
+exact clip filename. Compare a clip after processing it:
+
+```powershell
+.\venv\Scripts\python.exe -m tools.evaluate_counts manual_counts.json outputs\run_YYYYMMDD_HHMMSS_microseconds
+```
+
+Or have the tool run the video with its configured defaults and compare the
+result:
+
+```powershell
+.\venv\Scripts\python.exe -m tools.evaluate_counts manual_counts.json test_videos\uav0000137_00458_v.mp4
+```
+
+To compare your manual counts across a small one-parameter-at-a-time sweep
+(minimum track length, confidence, minimum box size, and ByteTrack buffer):
+
+```powershell
+.\venv\Scripts\python.exe -m tools.evaluate_counts --sweep manual_counts.json test_videos\uav0000137_00458_v.mp4
+```
+
+The tool prints manual count, app unique-track count, absolute difference, and
+percentage difference relative to your manual count. Percentage difference is
+`N/A` if the manual count is zero and the app count is nonzero. Results are
+saved under `outputs/evaluation_*.csv`. These are comparisons against your
+manual counts only; no counts are embedded or treated as ground truth in the
+project.
+
 ## Phase 3: Streamlit app
 
 Start the local app:
