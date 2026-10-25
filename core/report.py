@@ -9,7 +9,7 @@ from fpdf import FPDF
 from PIL import Image
 
 from core.analysis import AnalysisResult, analyze_csv
-from ui.components import class_color
+from core.colors import class_color
 
 
 matplotlib.use("Agg")

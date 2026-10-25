@@ -3,8 +3,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 outputs/run_*/
+outputs/*.csv
 test_videos/*
 !test_videos/.gitkeep
 datasets/*
 !datasets/.gitkeep
+*.mp4
+*.avi
+*.mov
+*.mkv
 yolo11s.pt

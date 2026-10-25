@@ -1,390 +1,204 @@
-# DRISHTI — Drone Surveillance Report System
+# DRISHTI — Project Report
 
-## 1. Executive summary
+## Current status
 
-DRISHTI is a local video-analysis application for recorded aerial footage. It
-uses an Ultralytics YOLO model with ByteTrack to detect and track selected
-objects, then writes a CSV, an annotated video, and best-confidence object
-snapshots for each run. A Streamlit interface provides live processing
-feedback, CSV-derived analysis, run browsing, object dossiers, downloads, and
-an on-demand PDF brief.
+Report updated: 2026-10-23.
 
-The project is designed for local use on Windows 11 with Python 3.12 and a
-CUDA-capable NVIDIA GPU. The detection pipeline currently requires CUDA; CPU
-inference is not supported by `core.detector.run_detection`.
+DRISHTI analyzes recorded drone footage locally. Its Python detection pipeline uses Ultralytics YOLO and ByteTrack, stores run evidence in CSV, and provides results, object tracking summaries, annotated video, snapshots, and PDF briefs. The repository now contains both the earlier Streamlit application and a newer FastAPI + React application. The React application talks to the FastAPI backend; the Streamlit source remains in the repository.
 
-## 2. Project goals and boundaries
+The current checkout is on `quality-improvements` at commit `b3a3fe7` (`new system done removed streamlit`). The worktree also contains uncommitted additions for a batch-processing script and a VisDrone run manifest. This report describes the current checkout and local run evidence rather than treating the project as archived.
 
-### Included
+## Scope and outcome
 
-- Upload and analyze recorded MP4, AVI, or MOV video.
-- Select model classes; start with a curated COCO-oriented class selection.
-- Track detections over time and discard tracks shorter than the configured
-  minimum.
-- Provide progress, an annotated live preview, and qualified live track counts.
-- Save per-run CSV output, annotated H.264 video, and object snapshots.
-- Derive counts, five-second timeline data, summaries, charts, and run filters
-  from each run's `detections.csv`.
-- Browse and filter past runs and inspect a tracked object in a dossier.
-- Build a PDF report only after the user clicks **Print Brief**.
-- Support dark and light graphite UI themes.
+DRISHTI is designed for local Windows 11 + Python 3.12 work on recorded drone clips. The backend is Python, FastAPI, OpenCV, pandas, and Ultralytics YOLO with ByteTrack. The current web client is React, TypeScript, and Vite; the older Streamlit UI is also still present. The detector reads video from disk, tracks selected classes, and saves per-run outputs.
 
-### Explicitly out of scope
+Key outcomes:
+- Streamlit console UI with graphite styling and dark/light themes
+- CSV-first Results, Run Explorer, and Object Dossier pages
+- Provenance-aware detections CSV for run parameters and legacy compatibility
+- Evaluation tool for manual-count comparisons
+- Configurable default-preserving detection filters and speed controls
+- PDF brief enhancements and improved snapshot handling
+- FastAPI endpoints for health, model metadata, detection streaming, files, runs, and PDF briefs
+- React console pages for Analyze, Results, Run Explorer, and Object Dossier
+- Batch processing of local MP4 clips and recorded VisDrone sequence outcomes
 
-Login, roles, user management, databases, maps/GPS, live drone input, cloud
-processing, model training, thermal/night processing, PowerPoint, batch
-queues, source-video retention, and natural-language queries are not part of
-the current implementation.
+## Repository and branch state
 
-## 3. Technology and configuration
+Current branch:
+- quality-improvements
 
-| Area | Implementation |
+Related branch retained:
+- ui-redesign
+
+The historical project log lives at:
+- docs/archive/gptluna.md
+
+Current local worktree changes:
+- `tools/batch_process.py` is added and processes `*.mp4` files from `test_videos/` with the configured default classes. It prints per-clip outcomes and creates a PDF brief after each successful run.
+- Run it from the repository root with `python -m tools.batch_process` (or the selected virtual-environment Python executable).
+- `outputs/visdrone_batch_manifest_20261023_194944.csv` is an untracked run manifest for 52 VisDrone sequences. It records 51 completed sequences and one interrupted sequence. The completed entries account for 21,748 frames; the manifest assumes 30 FPS.
+- The batch script and manifest are separate: the script does not currently write that VisDrone manifest.
+
+## Architecture summary
+
+Top-level structure:
+- app.py and ui/ — legacy Streamlit entry point, theme, components, and pages
+- api/ — FastAPI application, schemas, and endpoints
+- web/ — React + TypeScript frontend and Vite build configuration
+- core/ — video source, detector, analysis, report, and config logic
+- tools/ — batch processing, evaluation, and frame-to-video utilities
+- tests/ — automated verification for app, pipeline, UI, and evaluation tools
+- outputs/ — run folders generated locally
+- test_videos/ — sample clips used for validation
+- datasets/ — local datasets kept out of source control
+
+## Data flow
+
+1. A video is uploaded through the web interface or selected from a local sample.
+2. The API validates the request and starts detection; progress and annotated previews are streamed to the web client.
+3. The detector runs YOLO + ByteTrack on selected classes.
+4. Track state and provenance are written to `detections.csv` as the primary evidence record.
+5. Results, run explorer, and object dossier data are derived from saved run CSVs through the API.
+6. A PDF brief is generated on request.
+7. The Streamlit interface remains as an alternate, legacy entry point in the source tree.
+
+## Output artifacts
+
+Each successful run writes a timestamped folder under outputs/. In the final version, each run may contain:
+- detections.csv
+- annotated.mp4
+- snapshots/
+- brief.pdf (generated on request in the UI; the batch script generates it automatically after successful processing)
+
+The CSV is the single source of truth for all numbers, charts, reports, and summaries shown in the app.
+
+## User interfaces
+
+The console interfaces use a graphite aesthetic:
+- grayscale chrome
+- data-only color highlights for object classes and statuses
+- analysis, results, run exploration, and object dossier pages
+- compact KPI cards, charts, tables, snapshots, and annotated-video review
+- responsive layouts and interactive navigation
+
+The Streamlit application retains its dark/light theme toggle and sidebar navigation. The React application is a separate TypeScript frontend built with Vite and communicates with the FastAPI endpoints.
+
+## API and web application
+
+The FastAPI application is defined in `api/main.py`. Its routes provide:
+- health status and model metadata/class/sample-video information
+- video detection with server-sent progress and preview events
+- run listing, run details, and run deletion
+- access to run artifacts and on-demand PDF generation
+- serving the built React application from `web/dist/` when that directory exists
+
+The React application currently includes Analyze, Results, Run Explorer, and Object Dossier pages. The web package provides Vite development, production build, preview, and Oxlint commands. For local development, run the API with Uvicorn and run the Vite development server separately. The repository's setup documents should be kept aligned with this newer application path.
+
+## Core capabilities delivered
+
+### Detection and processing
+- Upload workflow with validation and corrupt-file handling
+- Class selection and default-curated classes
+- Progress display, elapsed timer, and warning banner for long videos
+- Zero-detection handling
+- Annotated preview during processing
+- CSV provenance recording for model, confidence, size, track length, device, and processing time
+- Compatibility for old CSVs without provenance columns
+
+### Results experience
+- KPI strip with counts and timing information
+- Summary text from CSV-derived values
+- Three SVG charts: class totals, time histogram, stacked class mix
+- Additional active-objects timeline chart
+- Snapshot gallery with sorting and paging
+- Download CSV and print PDF actions
+
+### Run exploration and object review
+- Filtering by search, class, object count, date, and sort mode
+- Previous-run browsing
+- Object dossier with prev/next object selection
+- Per-class context in related object cards
+
+### Reporting and quality
+- PDF brief with page numbers, legend, and run settings
+- Print CSS for browser-side print cleanup
+- Snapshot quality controls with padding and minimum size rules
+- Configurable defaults that preserve existing behavior unless changed by the user
+- Evaluation CLI for comparing app counts to manual counts
+
+## Quality improvements included
+
+The project includes a quality and handover pass that improved the trustworthiness and usability of the app:
+- CSV provenance and backward compatibility for legacy folders
+- Not-recorded handling for old runs
+- explicit run settings in the CSV and results page
+- evaluation tool for manual count error measurement
+- configurable minimum box filter and per-class confidence overrides
+- tracker and inference-width controls with default-safe behavior
+- visible-large-video notice and elapsed/processing FPS display
+- honest chart labels and better active-object charting
+- better snapshot quality, gallery pagination, and placeholder handling
+- PDF improvements and print styling
+- README quick-start, limitation notes, and dependency pinning
+- repository scan for secret and personal-path leakage
+- FastAPI routes and request/response schemas for the web application
+- React/TypeScript console with API-backed analysis and results pages
+- API tests for health, model metadata, sample videos, and run responses
+- A local batch-processing script for MP4 clips in `test_videos/`
+
+## Recent VisDrone batch run
+
+The local manifest `outputs/visdrone_batch_manifest_20261023_194944.csv` records 52 input sequences from `VisDrone2019-VID-test-dev` and `VisDrone2019-VID-train`:
+- 51 sequences completed, with run folders recorded in `outputs/`
+- 1 sequence (`uav0000281_00460_v`) was interrupted and has no run directory in the manifest
+- 21,748 frames are recorded for completed sequences
+- The conversion/processing manifest uses a 30 FPS assumption; it does not establish the dataset's native frame rate
+
+The manifest is local run evidence, not a ground-truth evaluation. Detection and tracking counts are not formal accuracy measurements.
+
+## Validation summary
+
+Checks performed while updating this report:
+
+| Check | Result |
 |---|---|
-| Language/runtime | Python 3.12; project targets Windows 11 |
-| Web UI | Streamlit (installed environment was checked at version 1.66.0) |
-| Detection | Ultralytics YOLO, default model file `yolo11s.pt` |
-| Tracking | ByteTrack |
-| Video input/output | OpenCV for reading; imageio-ffmpeg/FFmpeg for H.264 output |
-| Data processing | pandas, Python CSV |
-| PDF | fpdf2 and Matplotlib (Matplotlib is used for PDF charts, not UI charts) |
-| UI charts | Hand-written responsive SVG strings; no UI chart dependency |
-| Tests | `unittest`, Streamlit `AppTest`, synthetic OpenCV video |
+| FastAPI tests (`python -m unittest tests.test_api -v`) | Passed: 6 tests |
+| React production build (`npm run build`) | Passed: TypeScript build and Vite bundle |
+| React lint (`npm run lint`) | Completed with 5 warnings in `Dossier.tsx` and `Results.tsx` (hook dependencies, effect state update, and callback initialization) |
 
-Runtime dependencies are pinned in [requirements.txt](requirements.txt) to
-versions installed in the working environment. PyTorch and torchvision use
-the CUDA 12.8 wheels and are installed from the official index as documented
-in README.
+Key environment versions at close:
+- Streamlit 1.66.0
+- Ultralytics 8.4.183
+- PyTorch 2.11.0+cu128
+- torchvision 0.26.0+cu128
+- OpenCV 5.0.0.93
+- pandas 3.0.6
+- fpdf2 2.8.9
+- PyYAML 6.0.3
+- Pillow 12.3.0
+- Matplotlib 3.11.2
 
-Central detection settings in [core/config.py](core/config.py):
+These versions were recorded in the earlier handoff; they were not all re-probed during this report update. The complete Python test suite and live web/API startup were not rerun as part of this update.
 
-| Setting | Value |
-|---|---:|
-| Model | `yolo11s.pt` |
-| Confidence threshold | `0.35` |
-| Image size | `960` |
-| Minimum track length | `5` frames |
-| Minimum box size | Disabled (`0` pixels) |
-| Per-class confidence overrides | Empty |
-| ByteTrack buffer | `30` frames (project YAML) |
-| Maximum inference width | Disabled (`0`) |
-| Half precision | Disabled |
-| Minimum snapshot size / padding | Disabled (`0` / `0` pixels) |
-| Analysis timeline buckets | `5` seconds |
-| Curated default classes | person, bicycle, car, motorcycle, bus, truck, boat, bird, dog, cat, horse, cow, sheep |
+## Dependencies and notes
 
-The detector selects the CUDA device explicitly (`device=0`) and raises a
-clear runtime error when CUDA is unavailable.
+Direct dependencies were pinned in requirements.txt for reproducibility and handover quality. The PyTorch CUDA install instruction remains documented in the README and must be kept for this project.
 
-## 4. Architecture and repository map
+The repository also retains the Ultralytics AGPL-3.0 and VisDrone usage/terms guidance to keep the project compliant and transparent.
 
-```text
-app.py
-├── ui/theme.py              CSS variables, dark/light theme and print rules
-├── ui/components.py         Sidebar, class colors, reusable HTML components
-├── ui/charts.py             Pure SVG chart builders
-├── ui/data.py               CSV-backed run/object records and run filtering
-└── ui/pages/
-    ├── analyze.py           Upload, classes, parameters, progress and preview
-    ├── results.py           CSV analysis, SVGs, replay, snapshots and actions
-    ├── explorer.py          Search/filter/sort of indexed runs
-    └── dossier.py           Per-track view and Prev/Next navigation
+## Known limitations
 
-core/
-├── config.py                Project paths and detector settings
-├── video_source.py          OpenCV video validation and frame reading
-├── detector.py              YOLO/ByteTrack pipeline and output generation
-├── analysis.py              CSV validation, unique counts, timeline, summary
-└── report.py                On-demand PDF brief generation
+The project still intentionally reflects these boundaries:
+- small or distant objects may be missed
+- counts are approximate and should not be presented as accuracy measurements
+- tracking can split or merge IDs across frames
+- CUDA is required for the current detector flow
+- source video retention is not implemented
+- no login, maps, DB, or PowerPoint workflows are included
 
-tools/frames_to_video.py     JPG-sequence to H.264 video utility
-tests/                       App, pipeline and UI helper tests
-outputs/                     Local run folders (generated; ignored by Git)
-test_videos/                 Local sample clips (ignored by Git)
-datasets/                    Local datasets (ignored by Git)
-```
+## Final closure note
 
-Other project documentation includes [README.md](README.md),
-[PLAN.md](PLAN.md), and the archived [GPT Luna log](docs/archive/gptluna.md).
+DRISHTI currently contains a working local detection pipeline, an existing Streamlit UI, and a newer FastAPI + React application. The React production build and focused API tests pass; lint reports five warnings that remain to be addressed. The worktree also includes local batch-processing changes and a manifest showing one interrupted sequence that can be rerun. Project counts remain approximate and should not be presented as accuracy measurements.
 
-## 5. Processing and data flow
-
-1. Streamlit loads the model's available class names and presents the Analyze
-   page. A user uploads a recorded clip, chooses classes, and starts a run.
-2. The uploaded bytes are written to a temporary file. `VideoSource` validates
-   that the file exists, opens successfully, has usable FPS/frame count/
-   dimensions, and contains a readable frame.
-3. `run_detection` applies YOLO tracking with ByteTrack, the selected classes,
-   confidence `0.35`, image size `960`, and CUDA device 0. It tracks detections
-   frame-by-frame and writes an annotated H.264 video.
-4. Every three frames and on the final frame, the detector can send a
-   downscaled annotated RGB preview and counts for tracks that have met the
-   five-frame minimum. A progress callback reports completed frames.
-5. For each track, the pipeline records first/last seen times, confidence
-   observations, and the crop from its highest-confidence detection. Tracks
-   shorter than five frames are removed from saved snapshots and CSV output.
-6. The completed run is saved in a timestamped `outputs/run_*` directory. The
-   CSV is the authoritative source for analysis. Results are reloaded from the
-   CSV rather than reconstructed from display-only state.
-7. `analyze_csv` validates run metadata and derives unique class counts,
-   five-second first-seen buckets, and template summary text. Results charts
-   and run-browser metadata use this CSV-derived information.
-8. When requested by the user, `build_brief` reads the run CSV and available
-   snapshots, renders PDF charts, and writes `brief.pdf`. No PDF is generated
-   before **Print Brief** is clicked.
-
-The original uploaded video is not retained in the run folder. Annotated replay
-is available from `annotated.mp4`; an original-versus-annotated viewer is
-therefore not provided.
-
-## 6. Run output and CSV schema
-
-Each successful processing run writes:
-
-```text
-outputs/
-└── run_YYYYMMDD_HHMMSS_microseconds/
-    ├── detections.csv
-    ├── annotated.mp4
-    ├── snapshots/
-    │   └── <class>_<track-id>.jpg
-    └── brief.pdf               only after Print Brief
-```
-
-`detections.csv` columns:
-
-| Column | Meaning |
-|---|---|
-| `video_name` | Original uploaded filename |
-| `video_duration_sec` | Source video duration in seconds |
-| `fps` | Source video frames per second |
-| `processed_at` | Local timezone-aware processing timestamp |
-| `track_id` | Tracker ID for the tracked object |
-| `class` | Model class name |
-| `first_seen_sec` | First observed time for this track |
-| `last_seen_sec` | Last observed time for this track |
-| `avg_confidence` | Mean detection confidence for this track |
-| `snapshot_path` | Snapshot path relative to the run directory |
-
-When no track meets the minimum length, the CSV contains a `__none__`
-placeholder row with run metadata and blank object fields. This preserves run
-metadata and allows zero-detection summaries and PDF briefs.
-
-## 7. User interface
-
-The interface remains a Streamlit application, styled with injected CSS. Its
-default theme is dark graphite; the sidebar toggle switches to a light graphite
-variant. IBM Plex Sans and IBM Plex Mono are requested via Google Fonts with
-system-font fallbacks. If offline, the system fonts remain available.
-
-### Analyze
-
-- Upload MP4, AVI, or MOV.
-- Choose model classes from all classes available in the loaded model, with
-  curated defaults selected initially.
-- Review read-only confidence, image-size, minimum-track, and device
-  parameters.
-- Run detection with progress text and elapsed time.
-- View the live annotated frame and qualified class counts.
-- Show an error for corrupt or unsupported video and a warning for video longer
-  than five minutes; the long video can still be processed.
-
-### Results
-
-- KPI strip for unique object count, class count, most common class, busiest
-  time window, duration, and processing speed.
-- New CSVs record run provenance and processing time; Results derives FPS from
-  that CSV. Older runs display absent settings as **Not recorded** and omit the
-  processing-speed KPI.
-- Template summary and approximate-count warning.
-- Hand-written SVG class-count/share bars, five-second timeline histogram with
-  a rounded-top bar path and computed nice axis maximum, a visible-objects
-  timeline based on first/last-seen intervals, and a 100% class-mix bar.
-- Annotated video replay and confidence-sorted snapshot cards (24 per page)
-  linked to object dossiers; missing crops have neutral placeholders.
-- Detection parameters/provenance panel.
-- CSV download, on-demand **Print Brief**, and PDF download after creation.
-
-### Run Explorer
-
-- Indexes run folders containing `detections.csv`.
-- Filters by video filename, class, minimum unique-object count, and inclusive
-  date range.
-- Sorts by newest, most objects, or longest video.
-- Shows matching-run count and loads results from a selected run.
-
-### Object Dossier
-
-- Opens from a Results snapshot card.
-- Shows the selected object's snapshot when available, class, tracker ID,
-  first/last seen, visible duration, average confidence, and share of total
-  unique tracks in the run.
-- Prev/Next navigation steps through the object list from which the dossier
-  was opened; related objects of the same class are also shown.
-
-The fixed class palette is defined in `ui/components.py`; unlisted classes use
-a deterministic name-derived color. Class names accompany color swatches.
-SVGs include responsive `viewBox` dimensions, accessible labels, and `<title>`
-tooltips; they do not require JavaScript.
-
-The UI contains no JavaScript-based interactions and uses no chart libraries.
-CSS includes visible keyboard focus styling, reduced-motion handling, and
-print rules that hide navigation and controls for browser printing.
-
-## 8. PDF report
-
-The PDF brief is a separate output from browser printing. `core/report.py`
-builds the PDF only when explicitly requested and includes run metadata, a
-unique-track count table, counts and timeline charts, the CSV-derived summary,
-run settings, location when recorded, a class-colour legend, page numbers,
-available snapshots (up to three per class), and a limitations note.
-Matplotlib is used internally for these PDF charts only. Snapshot paths are
-resolved relative to the run directory and rejected if they point outside it.
-
-## 9. Installation and use
-
-From PowerShell at the repository root:
-
-```powershell
-py -3.12 -m venv venv
-.\venv\Scripts\python.exe -m pip install --upgrade pip
-.\venv\Scripts\python.exe -m pip install torch==2.11.0+cu128 torchvision==0.26.0+cu128 --index-url https://download.pytorch.org/whl/cu128
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-Place the `yolo11s.pt` weights file in the project root, then verify CUDA:
-
-```powershell
-.\venv\Scripts\python.exe -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CUDA unavailable')"
-```
-
-Start the web app:
-
-```powershell
-.\venv\Scripts\python.exe -m streamlit run app.py
-```
-
-The default development URL is `http://localhost:8501`. To process a video
-from the command line:
-
-```powershell
-.\venv\Scripts\python.exe -m core.detector test_videos\clip1.mp4
-.\venv\Scripts\python.exe -m core.detector test_videos\clip1.mp4 --classes person car truck
-```
-
-To convert numbered JPEG sequence folders to H.264 test clips:
-
-```powershell
-.\venv\Scripts\python.exe -m tools.frames_to_video datasets\VisDrone-VID-val --output test_videos --fps 30 --limit 5
-```
-
-The README includes additional environment setup and demo instructions.
-
-## 10. Tests and verification
-
-Run the full test suite:
-
-```powershell
-.\venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-The suite currently contains 31 tests across app, pipeline, evaluation, and UI
-helpers. Coverage includes:
-
-- Corrupt upload reporting without app failure.
-- Editing the class selection in the UI and passing it to detection.
-- Synthetic selected-class tracking, CSV output, snapshot generation,
-  annotated-video playability, preview callback cadence/counts, and class IDs.
-- Corrupt video rejection and invalid preview parameter validation.
-- Long video processing without retaining the full set of frames in memory.
-- Zero-detection CSV analysis and PDF generation.
-- Legacy CSV fallback for missing provenance, configurable detector filters,
-  inference-width box mapping, snapshot padding/minimum-size behavior, and
-  manual-count evaluation maths/CLI output.
-- JPEG sequence ordering, H.264 conversion, and command-line scanning.
-- SVG content and values, new/visible-object timelines, sorting/share
-  calculations, nice axis maximum, rounded bar path, deterministic class
-  colors, time formatting, and run filtering/sorting.
-
-The app has also been started locally and checked through its Streamlit health
-endpoint and AppTest smoke tests. The latest full-suite run reported all 31
-tests passing.
-
-## 11. Validation and observed performance
-
-The documented test machine is an NVIDIA GeForce RTX 4060 Laptop GPU with
-CUDA-enabled PyTorch. Three VisDrone-VID validation sequences were converted at
-an assumed 30 FPS and processed:
-
-| Sequence | Frames | Resolution | End-to-end time | End-to-end FPS | Tracked IDs recorded |
-|---|---:|---:|---:|---:|---|
-| `uav0000137_00458_v` | 233 | 2688 × 1512 | 52.5 s | 4.44 | person 121, car 72, motorcycle 33, bicycle 24, bus 1, truck 1 |
-| `uav0000305_00000_v` | 184 | 1904 × 1072 | 10.0 s | 18.41 | car 17, truck 1 |
-| `uav0000339_00001_v` | 275 | 1904 × 1072 | 17.5 s | 15.76 | person 42, car 37, motorcycle 13, truck 6, bicycle 3 |
-
-These are per-run observations including initialization and output writing, not
-a controlled benchmark. The source archive frame rate was not independently
-verified; durations depend on the 30 FPS conversion assumption. A separate
-synthetic 90-frame, 320 × 240 blank clip completed in 7.47 seconds (12.04 FPS),
-including model initialization and H.264 output. This synthetic result is not
-representative of real footage.
-
-A later single-run comparison on `uav0000137_00458_v.mp4` (2688 × 1512,
-233 frames) recorded 29.96 seconds (7.78 FPS) at the default inference width
-and 29.26 seconds (7.96 FPS) with a 1280-pixel inference width. Tracked totals
-changed from 252 to 204. These are individual observations, not a controlled
-benchmark or accuracy comparison; width resizing remains disabled by default.
-
-Annotated frames and representative crops were visually checked. These
-qualitative checks are not a formal accuracy evaluation. VisDrone categories do
-not fully align with COCO, and trackers can split or merge identities.
-
-## 12. Limitations and operational notes
-
-- Counts are approximate: tracking can split one physical object into multiple
-  IDs or merge different objects. Small or distant objects may be missed.
-- CUDA is required for detection in the current pipeline. A CPU device label
-  does not imply CPU inference support.
-- Optional inference resizing and FP16 can change predictions; both remain
-  disabled by default.
-- Processing time includes source validation, model loading, inference, and
-  annotated-video encoding, but excludes CSV serialization.
-- Original uploaded videos are temporary and are not kept alongside runs.
-- A missing or corrupt snapshot does not change CSV-derived counts, but its
-  image cannot be shown in the UI or PDF.
-- The test clips, generated runs, dataset files, model weights, and Python
-  environment are local/ignored files rather than committed project assets.
-- The Google Fonts import requires network access to load IBM Plex; local
-  system font fallbacks are used when unavailable.
-- No accuracy claims should be inferred from the included tracked-ID counts.
-
-## 13. Privacy, licensing, and data handling
-
-Processing is local to the machine running Streamlit. The application does not
-add accounts, roles, a database, or cloud processing. The uploaded source is
-temporarily staged for detection; run outputs are stored under local
-`outputs/`. Do not place sensitive footage in a publicly accessible deployment
-without separately assessing access and storage controls.
-
-The model library used is Ultralytics YOLO, which the project README identifies
-as AGPL-3.0; review applicable license obligations before redistribution or
-deployment. The VisDrone dataset and videos have their own terms. Check those
-terms before reuse or redistribution; local dataset assets are excluded from
-Git.
-
-## 14. Current repository status
-
-The current quality and handover changes are on branch `quality-improvements`;
-the known-good console redesign remains on `ui-redesign`. This branch records
-CSV provenance compatibly, supports manual count evaluation and opt-in detector
-controls, adds active-object charts and snapshot/PDF improvements, and refreshes
-handover documentation. Consult `git status` for the local commit state.
-
-## 15. Future work
-
-Potential future work, not currently implemented:
-
-- Batch upload queue with per-video statuses.
-- Optional source-video retention for original-versus-annotated comparison.
-- A safe, constrained query interface over CSV fields.
-- Additional real-footage accuracy evaluation, high-altitude testing, and
-  resource profiling on longer high-resolution clips.
+This report summarizes the committed project and the local batch-run state as of the update date above.

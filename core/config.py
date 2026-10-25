@@ -4,6 +4,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 TEST_VIDEOS_DIR = PROJECT_ROOT / "test_videos"
+DATASETS_DIR = PROJECT_ROOT / "datasets"
 
 MODEL_NAME = "yolo11s.pt"
 CONFIDENCE_THRESHOLD = 0.35

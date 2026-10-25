@@ -1,5 +1,6 @@
 from datetime import date
 from pathlib import Path
+import tempfile
 import unittest
 
 from core.report import _class_hex, _class_rgb
@@ -12,7 +13,14 @@ from ui.charts import (
     visible_objects_histogram,
 )
 from ui.components import class_color
-from ui.data import ObjectInfo, RunInfo, filter_runs, sort_objects_by_confidence
+from ui.data import (
+    ObjectInfo,
+    RunInfo,
+    available_dataset_videos,
+    filter_runs,
+    sort_objects_by_confidence,
+)
+from ui.pages.library import scan_source_files
 from ui.pages.results import _time_label
 
 
@@ -63,9 +71,9 @@ class UIHelperTests(unittest.TestCase):
 
     def test_run_filters_and_sorting(self):
         runs = [
-            RunInfo(Path("run_20261001"), "traffic.mp4", "2026-10-01T10:00:00Z", 12, 4, ("car",)),
-            RunInfo(Path("run_20261002"), "crowd.mp4", "2026-10-02T10:00:00Z", 35, 9, ("person",)),
-            RunInfo(Path("run_20261003"), "traffic-night.mp4", "2026-10-03T10:00:00Z", 20, 6, ("car", "bus")),
+            RunInfo(Path("run_20261001"), "traffic.mp4", "2026-10-01T10:00:00Z", 12, 4, ("car",), "Mumbai"),
+            RunInfo(Path("run_20261002"), "crowd.mp4", "2026-10-02T10:00:00Z", 35, 9, ("person",), "Pune"),
+            RunInfo(Path("run_20261003"), "traffic-night.mp4", "2026-10-03T10:00:00Z", 20, 6, ("car", "bus"), "Bengaluru"),
         ]
         filtered = filter_runs(
             runs,
@@ -76,10 +84,67 @@ class UIHelperTests(unittest.TestCase):
             sort_by="most objects",
         )
         self.assertEqual([run.video_name for run in filtered], ["traffic-night.mp4"])
+        city_filtered = filter_runs(runs, video_query="pune")
+        self.assertEqual([run.video_name for run in city_filtered], ["crowd.mp4"])
         longest = filter_runs(runs, sort_by="longest video")
         self.assertEqual(longest[0].video_name, "crowd.mp4")
         newest = filter_runs(runs)
         self.assertEqual(newest[0].video_name, "traffic-night.mp4")
+
+    def test_dataset_sequences_include_flat_and_nested_visdrone_layouts(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            flat_sequence = root / "VisDrone2019-VID-train" / "sequences" / "uav_train"
+            nested_sequence = (
+                root
+                / "VisDrone2019-VID-val"
+                / "VisDrone2019-VID-val"
+                / "sequences"
+                / "uav_val"
+            )
+            flat_sequence.mkdir(parents=True)
+            nested_sequence.mkdir(parents=True)
+            (flat_sequence / "0000001.jpg").write_bytes(b"frame")
+            (flat_sequence / "0000002.jpeg").write_bytes(b"frame")
+            (flat_sequence / "readme.txt").write_text("not a frame")
+            (nested_sequence / "0000001.jpg").write_bytes(b"frame")
+
+            videos = available_dataset_videos(root)
+
+        self.assertEqual(
+            [(video.dataset_name, video.name, video.frame_count) for video in videos],
+            [
+                ("VisDrone2019-VID-train", "uav_train", 2),
+                ("VisDrone2019-VID-val", "uav_val", 1),
+            ],
+        )
+
+    def test_file_library_indexes_dataset_and_test_video_files(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            datasets = root / "datasets"
+            test_videos = root / "test_videos"
+            sequence = datasets / "VisDrone2019-VID-val" / "sequences" / "uav_val"
+            sequence.mkdir(parents=True)
+            test_videos.mkdir()
+            (sequence / "0000001.jpg").write_bytes(b"frame")
+            (datasets / "VisDrone2019-VID-val" / "annotations").mkdir()
+            (datasets / "VisDrone2019-VID-val" / "annotations" / "uav_val.txt").write_text(
+                "annotation"
+            )
+            (test_videos / "sample.mp4").write_bytes(b"video")
+
+            files = scan_source_files(datasets, test_videos)
+
+        self.assertEqual(len(files), 3)
+        self.assertEqual(
+            {(file["collection"], file["file"]) for file in files},
+            {
+                ("VisDrone datasets", "0000001.jpg"),
+                ("VisDrone datasets", "uav_val.txt"),
+                ("Test videos", "sample.mp4"),
+            },
+        )
 
     def test_snapshots_sort_by_average_confidence_with_missing_values_last(self):
         items = [

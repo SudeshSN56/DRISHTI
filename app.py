@@ -11,6 +11,7 @@ from ui.data import available_runs
 from ui.pages.analyze import render_analyze
 from ui.pages.dossier import render_dossier
 from ui.pages.explorer import render_explorer
+from ui.pages.library import render_library
 from ui.pages.results import render_results
 from ui.theme import inject_theme
 
@@ -40,7 +41,7 @@ def main() -> None:
 
     active_page = render_sidebar(
         class_names,
-        ("Analyze", "Results", "Run Explorer", "Object Dossier"),
+        ("Analyze", "Results", "Run Explorer", "Files & Runs", "Object Dossier"),
     )
     st.toggle(
         "Light theme",
@@ -81,6 +82,8 @@ def main() -> None:
             render_results(selected_run)
     elif active_page == "Run Explorer":
         render_explorer(run_dirs)
+    elif active_page == "Files & Runs":
+        render_library(run_dirs)
     else:
         render_dossier(selected_run)
 

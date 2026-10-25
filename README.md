@@ -24,6 +24,8 @@ pretrained Ultralytics YOLO model. The project targets Windows 11 and Python
 3. Demo flow: upload a clip, choose classes, select **Run**, review Results,
    download the CSV, and use **Print Brief** when a PDF is needed.
 
+For manual startup and troubleshooting steps, see [startup.md](startup.md).
+
 Known limitations: detections can miss small/high-altitude objects, unique
 tracked-ID counts are approximate, tracking may split or merge IDs, and
 inference requires CUDA. Do not treat counts as accuracy measurements.
@@ -193,6 +195,17 @@ New CSV files record processing throughput inputs and calculate FPS in
 analysis; legacy CSVs show missing provenance as not recorded. High-resolution
 videos receive a processing-time notice. The interface uses no new runtime
 dependencies.
+
+The **Files & Runs** page provides a paginated inventory of files under
+`datasets/` and `test_videos/`, alongside each processed run's saved artifacts.
+The file inventory refreshes periodically so large image-sequence collections
+remain browsable without listing every frame in one table.
+
+Run Explorer lists both processed runs and source sequences found under
+`datasets/VisDrone2019-VID-test-dev`, `datasets/VisDrone2019-VID-train`, and
+`datasets/VisDrone2019-VID-val`. These dataset entries are numbered JPG frame
+sequences, not prebuilt MP4 files or processed detection results. Any city name
+shown for them is a dummy demo label, not VisDrone location metadata.
 
 The theme uses IBM Plex Sans and IBM Plex Mono from Google Fonts with system
 font fallbacks when offline. To open the application in a browser, run
